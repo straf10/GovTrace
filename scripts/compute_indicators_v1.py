@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR, load_entity
+from kimdis_data import PROCESSED_DIR, build_vat_resolver, load_entity, resolve_vat
 
 RAW_DIR = Path("data/raw")
 OUT_DIR = PROCESSED_DIR
@@ -53,19 +53,12 @@ def load_entity_table() -> pd.DataFrame:
     return pd.read_csv(path, dtype={"vat": str})
 
 
-def primary_vat(vats: pd.Series) -> str | None:
-    """Πιο συχνό ΑΦΜ μέσα σε μια ομάδα ίδιου ονόματος φορέα.
-
-    Ο ίδιος φορέας εμφανίζεται στο ΚΗΜΔΗΣ με πολλαπλές παραλλαγές ΑΦΜ
-    (typos κατά την καταχώρηση, π.χ. 090169846/09016846/90169846 για το
-    ίδιο Υπουργείο) -- γι' αυτό ομαδοποιούμε δείκτες ανά *όνομα* φορέα, όχι
-    ανά ΑΦΜ, και κρατάμε εδώ μόνο το πιο συχνό ΑΦΜ ως ενδεικτικό/για σύνδεση
-    με entities.csv. ΠΡΟΣΟΧΗ: αν ποτέ υπάρξουν δύο πραγματικά διαφορετικοί
-    φορείς με πανομοιότυπο κατεγραμμένο όνομα, θα συγχωνευτούν λανθασμένα
-    εδώ -- βλ. σημείωση ελέγχου στο PLAN.md.
-    """
-    counts = vats.dropna().value_counts()
-    return counts.index[0] if not counts.empty else None
+def mode_name(names: pd.Series) -> str | None:
+    """Πιο συχνό καταγεγραμμένο όνομα μέσα σε μια ομάδα ίδιου ΑΦΜ (μόνο για εμφάνιση)."""
+    s = names.dropna()
+    if s.empty:
+        return None
+    return s.mode(dropna=True).iloc[0]
 
 
 def direct_award_rate(auctions: pd.DataFrame) -> pd.DataFrame:
@@ -74,17 +67,18 @@ def direct_award_rate(auctions: pd.DataFrame) -> pd.DataFrame:
         pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce")
     )
     df["is_direct"] = df["procedureType.key"].astype(str) == DIRECT_AWARD_KEY
+    df = df.dropna(subset=["vat_norm"])
 
     rows = []
-    for (name, year), g in df.groupby(["organization.value", "_source_year"]):
+    for (vat, year), g in df.groupby(["vat_norm", "_source_year"]):
         n_total = len(g)
         n_direct = int(g["is_direct"].sum())
         val_total = g["value"].sum(skipna=True)
         val_direct = g.loc[g["is_direct"], "value"].sum(skipna=True)
         rows.append(
             {
-                "organization_vat": primary_vat(g["organizationVatNumber"]),
-                "organization_name": name,
+                "organization_vat": vat,
+                "organization_name": mode_name(g["organization.value"]),
                 "year": year,
                 "n_total": n_total,
                 "n_direct": n_direct,
@@ -115,15 +109,17 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
         return members[0].get("vatNumber")
 
     df["contractor_vat"] = df["contractingDataDetails.contractingMembersDataList"].map(first_contractor_vat)
+    df = df.dropna(subset=["vat_norm"])
 
     rows = []
-    for (name, year), g in df.groupby(["organization.value", "_source_year"]):
+    for (vat, year), g in df.groupby(["vat_norm", "_source_year"]):
+        name = mode_name(g["organization.value"])
         g = g.dropna(subset=["contractor_vat", "value"])
         n = len(g)
         if n < MIN_N_HHI:
             rows.append(
                 {
-                    "organization_vat": primary_vat(g["organizationVatNumber"]),
+                    "organization_vat": vat,
                     "organization_name": name,
                     "year": year,
                     "n_contracts": n,
@@ -140,7 +136,7 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
         hhi = float((shares**2).sum())
         rows.append(
             {
-                "organization_vat": primary_vat(g["organizationVatNumber"]),
+                "organization_vat": vat,
                 "organization_name": name,
                 "year": year,
                 "n_contracts": n,
@@ -184,6 +180,7 @@ def bid_splitting(auctions: pd.DataFrame) -> pd.DataFrame:
     df["period"] = df["submission_date"].dt.date.map(
         lambda d: "2021-06+" if d >= THRESHOLD_CHANGE_DATE else "pre-2021-06"
     )
+    df = df.dropna(subset=["vat_norm"])
 
     df["band"] = None
     below = (df["value"] >= 0.8 * df["threshold"]) & (df["value"] < df["threshold"])
@@ -193,14 +190,15 @@ def bid_splitting(auctions: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(subset=["band"])
 
     rows = []
-    group_cols = ["organization.value", "period"]
-    for (name, period), g in df.groupby(group_cols):
+    group_cols = ["vat_norm", "period"]
+    for (vat, period), g in df.groupby(group_cols):
+        name = mode_name(g["organization.value"])
         n_below = int((g["band"] == "below").sum())
         n_above = int((g["band"] == "above").sum())
         if n_below < MIN_N_BID_SPLIT or n_above < MIN_N_BID_SPLIT:
             rows.append(
                 {
-                    "organization_vat": primary_vat(g["organizationVatNumber"]),
+                    "organization_vat": vat,
                     "organization_name": name,
                     "period": period,
                     "n_below": n_below,
@@ -212,7 +210,7 @@ def bid_splitting(auctions: pd.DataFrame) -> pd.DataFrame:
             continue
         rows.append(
             {
-                "organization_vat": primary_vat(g["organizationVatNumber"]),
+                "organization_vat": vat,
                 "organization_name": name,
                 "period": period,
                 "n_below": n_below,
@@ -254,14 +252,16 @@ def discount_rate(notices: pd.DataFrame, auctions: pd.DataFrame) -> pd.DataFrame
     auc = auc[auc["est_value"] > 0]
     auc["discount_pct"] = 100.0 * (auc["est_value"] - auc["final_value"]) / auc["est_value"]
     auc["near_zero"] = auc["discount_pct"].abs() <= 1.0  # ±1% θεωρείται "μηδενική έκπτωση"
+    auc = auc.dropna(subset=["vat_norm"])
 
     rows = []
-    for (name, year), g in auc.groupby(["organization.value", "_source_year"]):
+    for (vat, year), g in auc.groupby(["vat_norm", "_source_year"]):
+        name = mode_name(g["organization.value"])
         n = len(g)
         if n < MIN_N_DISCOUNT:
             rows.append(
                 {
-                    "organization_vat": primary_vat(g["organizationVatNumber"]),
+                    "organization_vat": vat,
                     "organization_name": name,
                     "year": year,
                     "n_linked": n,
@@ -273,7 +273,7 @@ def discount_rate(notices: pd.DataFrame, auctions: pd.DataFrame) -> pd.DataFrame
             continue
         rows.append(
             {
-                "organization_vat": primary_vat(g["organizationVatNumber"]),
+                "organization_vat": vat,
                 "organization_name": name,
                 "year": year,
                 "n_linked": n,
@@ -295,6 +295,13 @@ def main() -> None:
     if auctions.empty:
         print("Δεν βρέθηκαν δεδομένα auction σε data/raw/. Τρέξε πρώτα backfill/fetch.")
         return
+
+    resolver = build_vat_resolver([df for df in (auctions, contracts, notices) if not df.empty])
+    auctions["vat_norm"] = resolve_vat(auctions, resolver)
+    if not contracts.empty:
+        contracts["vat_norm"] = resolve_vat(contracts, resolver)
+    if not notices.empty:
+        notices["vat_norm"] = resolve_vat(notices, resolver)
 
     entities = load_entity_table()
     if entities.empty:

@@ -1,0 +1,113 @@
+---
+import { sparklineSvg, distributionStripSvg, type YearPoint, type Histogram } from "../lib/charts";
+
+interface Props {
+  title: string;
+  info: string;
+  defLink: string;
+  latestValue: number | null;
+  latestYear: number | null;
+  latestN: number | null;
+  valueFormat?: "pct" | "hhi" | "raw";
+  points: YearPoint[];
+  hist: Histogram | null;
+  percentile: number | null;
+  caveat: string;
+  coverageNote?: string | null;
+  insufficientData?: boolean;
+}
+
+const {
+  title,
+  info,
+  defLink,
+  latestValue,
+  latestYear,
+  latestN,
+  valueFormat = "pct",
+  points,
+  hist,
+  percentile,
+  caveat,
+  coverageNote = null,
+  insufficientData = false,
+} = Astro.props;
+
+function fmt(v: number | null): string {
+  if (v === null || v === undefined) return "—";
+  if (valueFormat === "pct") return `${v.toFixed(1)}%`;
+  if (valueFormat === "hhi") return v.toFixed(3);
+  return String(v);
+}
+
+const spark = sparklineSvg(points);
+const strip = hist ? distributionStripSvg(hist, latestValue) : null;
+---
+<div class="indicator-card">
+  <div class="indicator-head">
+    <h3>{title}</h3>
+    <span class="info-icon" title={info}>ⓘ</span>
+  </div>
+
+  {insufficientData || latestValue === null ? (
+    <p><span class="badge-missing">Ανεπαρκή δεδομένα</span></p>
+  ) : (
+    <>
+      <p class="indicator-value">
+        {fmt(latestValue)}
+        <span class="indicator-meta"> · N={latestN} · {latestYear}</span>
+      </p>
+      {coverageNote && <p class="indicator-coverage">{coverageNote}</p>}
+      <div class="indicator-charts">
+        <div class="chart-block">
+          <div set:html={spark} />
+          <span class="chart-label">εξέλιξη</span>
+        </div>
+        {strip && hist && hist.n >= 20 && (
+          <div class="chart-block">
+            <div set:html={strip} />
+            <span class="chart-label">
+              κατανομή ομάδας (N={hist.n}){percentile !== null ? ` · ${percentile}ο εκατοστημόριο` : ""}
+            </span>
+          </div>
+        )}
+      </div>
+    </>
+  )}
+
+  <p class="indicator-caveat">{caveat}</p>
+  <a class="indicator-def-link" href={defLink}>Πλήρης ορισμός →</a>
+</div>
+
+<style>
+  .indicator-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.1rem 1.25rem;
+  }
+  .indicator-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+  }
+  .indicator-head h3 { margin: 0; font-size: 1rem; }
+  .indicator-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin: 0.2rem 0;
+  }
+  .indicator-meta { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+  .indicator-coverage { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.4rem; }
+  .indicator-charts {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-block: 0.5rem;
+  }
+  .chart-block { display: flex; flex-direction: column; gap: 0.2rem; }
+  .chart-label { font-size: 0.7rem; color: var(--muted); }
+  .indicator-caveat { font-size: 0.82rem; color: var(--muted); margin: 0.6rem 0 0.3rem; }
+  .indicator-def-link { font-size: 0.85rem; }
+</style>

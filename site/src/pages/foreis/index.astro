@@ -125,7 +125,11 @@ const columns = [
             const above = (value as number) > m;
             cls = [above ? "above-median" : "", intensityClass(value as number, m)].filter(Boolean).join(" ");
           }
-          return `<td${cls ? ` class="${cls}"` : ""}>${fmt(value, c)}</td>`;
+          let content = fmt(value, c);
+          if (c === "name" && r.vat) {
+            content = `<a href="/foreas/${r.vat}/">${content}</a>`;
+          }
+          return `<td${cls ? ` class="${cls}"` : ""}>${content}</td>`;
         }).join("");
         return `<tr>${cells}</tr>`;
       })

@@ -1,0 +1,246 @@
+---
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import Base from "../../../layouts/Base.astro";
+import IndicatorCard from "../../../components/IndicatorCard.astro";
+import { stackedValueSvg, type YearSplit } from "../../../lib/charts";
+
+// ΠΡΟΣΟΧΗ: getStaticPaths τρέχει ΜΙΑ φορά για όλο το route, αλλά το
+// module-level frontmatter (έξω από getStaticPaths) τρέχει ΞΑΝΑ για ΚΑΘΕ
+// σελίδα (3.217 φορές). Γι' αυτό τα 41MB foreas_pages.json διαβάζονται
+// ΜΟΝΟ μέσα στο getStaticPaths, και σε κάθε σελίδα περνάει μέσω props
+// μόνο το δικό της record (+ το μικρό distributions.json, ~43KB, φτηνό
+// να περάσει ολόκληρο).
+// process.cwd() είναι το site/ (εκεί τρέχει το `astro build`/`astro dev`) --
+// πιο αξιόπιστο από import.meta.url εδώ, που το bundling του Astro build
+// μετατοπίζει σε διαφορετικό σχετικό βάθος από το πηγαίο αρχείο.
+export async function getStaticPaths() {
+  const DATA_DIR = join(process.cwd(), "src", "data");
+  const pages: Record<string, any> = JSON.parse(readFileSync(join(DATA_DIR, "foreas_pages.json"), "utf-8"));
+  const distributions: Record<string, any> = JSON.parse(readFileSync(join(DATA_DIR, "distributions.json"), "utf-8"));
+  return Object.keys(pages).map((vat) => ({
+    params: { vat },
+    props: { page: pages[vat], distributions },
+  }));
+}
+
+interface Props {
+  page: any;
+  distributions: Record<string, any>;
+}
+
+const { vat } = Astro.params;
+const { page, distributions } = Astro.props as Props;
+
+const nf = new Intl.NumberFormat("el-GR", { maximumFractionDigits: 0 });
+const eur = (v: number | null) => (v === null || v === undefined ? "—" : `${nf.format(v)} €`);
+
+const years: number[] = page.years ?? [];
+const latestYear = years.length ? years[years.length - 1] : null;
+const latestOverview = latestYear !== null ? page.overview[String(latestYear)] : null;
+
+const stackedRows: YearSplit[] = years.map((y) => {
+  const o = page.overview[String(y)] ?? {};
+  return { year: y, direct: 0, total: o.value_total ?? 0 };
+});
+// Δεν έχουμε ξεχωριστή αξία "μόνο απευθείας" υπολογισμένη στο build_foreas_data
+// -- προσεγγίζουμε με το da_pct * value_total ως εκτίμηση για το stacked chart.
+for (const row of stackedRows) {
+  const o = page.overview[String(row.year)] ?? {};
+  row.direct = ((o.da_pct ?? 0) / 100) * row.total;
+}
+const stackedSvg = stackedValueSvg(stackedRows);
+
+function indicatorInput(key: "da" | "hhi" | "discount") {
+  const series = page.indicators?.[key] ?? {};
+  const points = years.map((y) => {
+    const entry = series[String(y)];
+    const value = key === "hhi" ? entry?.value : entry?.value;
+    return { year: y, value: value ?? null };
+  });
+  const latest = latestYear !== null ? series[String(latestYear)] : null;
+  const group = page.group_label;
+  const distKey = group ? `${key}|${group}|${latestYear}` : null;
+  const hist = distKey ? distributions[distKey] : null;
+  const percentile = page.percentiles?.[key]?.[String(latestYear)] ?? null;
+  return { points, latest, hist, percentile };
+}
+
+const da = indicatorInput("da");
+const hhi = indicatorInput("hhi");
+const discount = indicatorInput("discount");
+
+const mailtoSubject = encodeURIComponent(`[ΔΙΟΡΘΩΣΗ] ${page.name ?? vat}`);
+const mailto = `mailto:115450409+straf10@users.noreply.github.com?subject=${mailtoSubject}`;
+
+const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction/attachment/${adam}`;
+---
+<Base title={page.name ?? vat} description={`Δείκτες διαφάνειας διαδικασιών για ${page.name ?? vat} (ΑΦΜ ${vat}).`}>
+  <div class="foreas-header">
+    <div>
+      <h1>{page.name ?? "Άγνωστος φορέας"}</h1>
+      <p class="subtitle">
+        {page.org_type || page.classification || "Φορέας"} · {page.nuts_city || "Χωρίς περιοχή"} · ΑΦΜ {vat}
+        {years.length > 0 && <> · Κάλυψη δεδομένων {years[0]}–{years[years.length - 1]}</>}
+      </p>
+    </div>
+    <div class="foreas-actions">
+      <a class="button-outline" href="/dedomena/">Κατέβασε τα δεδομένα (CSV)</a>
+      <a class="button-outline" href={mailto}>Υπέβαλε διόρθωση/απάντηση</a>
+    </div>
+  </div>
+
+  {latestOverview ? (
+    <section>
+      <div class="stat-tiles">
+        <div class="stat-tile">
+          <div class="value">{eur(latestOverview.value_total)}</div>
+          <div class="label">Συνολική αξία</div>
+          <div class="period">{latestYear}</div>
+        </div>
+        <div class="stat-tile">
+          <div class="value">{nf.format(latestOverview.n_total)}</div>
+          <div class="label">Πλήθος αναθέσεων</div>
+          <div class="period">{latestYear}</div>
+        </div>
+        <div class="stat-tile">
+          <div class="value">{nf.format(latestOverview.n_unique_contractors)}</div>
+          <div class="label">Μοναδικοί ανάδοχοι</div>
+          <div class="period">{latestYear}</div>
+        </div>
+      </div>
+
+      <div class="chart-panel">
+        <div set:html={stackedSvg} />
+        <p class="chart-caption">Αξία αναθέσεων ανά έτος — σκούρο μπλε: απευθείας (εκτίμηση από % πλήθους) · ανοιχτό μπλε: ανταγωνιστικές. Ονομαστικές τιμές.</p>
+      </div>
+
+      {page.top_cpv?.length > 0 && (
+        <div class="table-block">
+          <h2>Τι αγοράζει</h2>
+          <table class="plain-table">
+            <thead><tr><th>Κατηγορία CPV</th><th>Αξία</th></tr></thead>
+            <tbody>
+              {page.top_cpv.map((c: any) => (
+                <tr><td>{c.label} <span class="muted">({c.code})</span></td><td>{eur(c.value)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {page.top_contractors?.length > 0 && (
+        <div class="table-block">
+          <h2>Από ποιον</h2>
+          <table class="plain-table">
+            <thead><tr><th>Ανάδοχος</th><th>Αξία</th><th>Μερίδιο</th></tr></thead>
+            <tbody>
+              {page.top_contractors.map((c: any) => (
+                <tr><td>{c.name}</td><td>{eur(c.value)}</td><td>{c.share !== null ? `${c.share}%` : "—"}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  ) : (
+    <div class="empty-state">Δεν βρέθηκαν αναθέσεις για αυτόν τον φορέα στο τρέχον dataset.</div>
+  )}
+
+  <section>
+    <h2>Δείκτες διαφάνειας διαδικασιών</h2>
+    <p class="subtitle">Στατιστικοί δείκτες ρίσκου διαδικασιών — όχι διαπιστώσεις παρανομίας.</p>
+    <div class="entry-cards">
+      <IndicatorCard
+        title="% Απευθείας ανάθεση"
+        info="Μερίδιο αναθέσεων με τη διαδικασία «Απευθείας ανάθεση» σε πλήθος. Μικροί φορείς με λίγες προμήθειες έχουν φυσιολογικά υψηλό ποσοστό — δείτε πάντα το N."
+        defLink="/deiktes/direct-award/"
+        latestValue={da.latest?.value ?? null}
+        latestYear={latestYear}
+        latestN={da.latest?.n ?? null}
+        valueFormat="pct"
+        points={da.points}
+        hist={da.hist}
+        percentile={da.percentile}
+        caveat="Πιθανές νόμιμες εξηγήσεις: εξειδικευμένη αγορά, μικρός προϋπολογισμός, επείγουσες ανάγκες."
+      />
+      <IndicatorCard
+        title="Συγκέντρωση αναδόχων (HHI)"
+        info="Πόσο συγκεντρωμένη είναι η δαπάνη σε λίγους αναδόχους (0–1). Απαιτείται ελάχιστο N≥10 συμβάσεων."
+        defLink="/deiktes/hhi/"
+        latestValue={hhi.latest?.value ?? null}
+        latestYear={latestYear}
+        latestN={hhi.latest?.n ?? null}
+        valueFormat="hhi"
+        points={hhi.points}
+        hist={hhi.hist}
+        percentile={hhi.percentile}
+        caveat="Πιθανές νόμιμες εξηγήσεις: εξειδικευμένη αγορά με λίγους πιστοποιημένους προμηθευτές."
+      />
+      <IndicatorCard
+        title="Διάμεση έκπτωση"
+        info="Διαφορά εκτιμώμενης προς τελική αξία ανάθεσης. Συστηματικά ~0% έκπτωση σε ανταγωνιστικές διαδικασίες είναι καθιερωμένο red flag."
+        defLink="/deiktes/discount-rate/"
+        latestValue={discount.latest?.value ?? null}
+        latestYear={latestYear}
+        latestN={discount.latest?.n ?? null}
+        valueFormat="pct"
+        points={discount.points}
+        hist={discount.hist}
+        percentile={discount.percentile}
+        insufficientData={discount.latest?.insufficient_coverage ?? true}
+        coverageNote={discount.latest ? `Κάλυψη σύνδεσης προκήρυξης↔ανάθεσης: ${discount.latest.coverage_pct ?? "—"}%` : null}
+        caveat="Proxy μέσω τιμής κατακύρωσης λόγω περιορισμένης σύνδεσης notice↔contract στα δεδομένα ΚΗΜΔΗΣ."
+      />
+    </div>
+  </section>
+
+  {page.recent?.length > 0 && (
+    <section>
+      <h2>Πρόσφατες αναθέσεις</h2>
+      <div class="table-wrap">
+        <table class="plain-table">
+          <thead>
+            <tr><th>Ημερομηνία</th><th>Τίτλος</th><th>Ανάδοχος</th><th>Ποσό (με ΦΠΑ)</th><th>Διαδικασία</th><th>ΑΔΑΜ</th></tr>
+          </thead>
+          <tbody>
+            {page.recent.map((r: any) => (
+              <tr>
+                <td>{r.date}</td>
+                <td>{r.title}</td>
+                <td>{r.contractor_name ?? "—"}</td>
+                <td>{eur(r.amount_with_vat)}</td>
+                <td>{r.procedure}</td>
+                <td>{r.adam ? <a href={adamUrl(r.adam)} target="_blank" rel="noopener">{r.adam}</a> : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+</Base>
+
+<style>
+  .foreas-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .foreas-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .button-outline {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    text-decoration: none;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .chart-panel { margin-block: 1.5rem; }
+  .table-block { margin-block: 1.5rem; }
+  .plain-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  .plain-table th, .plain-table td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+  .muted { color: var(--muted); font-size: 0.85em; }
+</style>

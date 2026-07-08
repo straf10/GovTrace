@@ -41,27 +41,26 @@ def merge_indicators() -> list[dict]:
     if da.empty:
         return []
 
-    # Ένωση σε (name, year) -- όχι (vat, year): κάθε δείκτης υπολογίζει το δικό
-    # του "πιο συχνό ΑΦΜ" ανά όνομα φορέα (βλ. primary_vat στο
-    # compute_indicators_v1.py), οπότε το vat μπορεί να διαφέρει ή να λείπει
-    # (None) ανάμεσα σε da/hhi/dr για τον ίδιο φορέα -- ένωση πάνω σε vat θα
-    # έχανε αντιστοιχίες ή, χειρότερα, θα πολλαπλασίαζε γραμμές όταν πολλές
-    # None τιμές ταιριάζουν μεταξύ τους.
+    # Ένωση σε (vat, year) -- session 6: όλοι οι δείκτες πλέον υπολογίζονται
+    # ανά κανονικοποιημένο ΑΦΜ (kimdis_data.canonical_vat), όχι ανά όνομα
+    # φορέα (βλ. compute_indicators_v1.py). Το vat είναι πλέον αξιόπιστο και
+    # ποτέ None στις γραμμές δεικτών, οπότε η ένωση πάνω σε vat δεν κινδυνεύει
+    # να πολλαπλασιάσει γραμμές.
     merged = da.rename(columns={"organization_vat": "vat", "organization_name": "name"})
     if not hhi.empty:
         merged = merged.merge(
-            hhi.rename(columns={"organization_name": "name"})[
-                ["name", "year", "n_contracts", "hhi", "top1_share"]
+            hhi.rename(columns={"organization_vat": "vat"})[
+                ["vat", "year", "n_contracts", "hhi", "top1_share"]
             ],
-            on=["name", "year"],
+            on=["vat", "year"],
             how="left",
         )
     if not dr.empty:
         merged = merged.merge(
-            dr.rename(columns={"organization_name": "name"})[
-                ["name", "year", "n_linked", "median_discount_pct", "pct_near_zero_discount"]
+            dr.rename(columns={"organization_vat": "vat"})[
+                ["vat", "year", "n_linked", "median_discount_pct", "pct_near_zero_discount"]
             ],
-            on=["name", "year"],
+            on=["vat", "year"],
             how="left",
         )
     if not entities.empty:

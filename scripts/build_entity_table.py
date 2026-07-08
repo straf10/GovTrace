@@ -4,6 +4,18 @@
 μητρώο φορέων (ΑΦΜ -> όνομα, τύπος, NUTS), αντί το group-by ονόματος να
 γίνεται ξανά και ξανά inline σε κάθε script δεικτών.
 
+Κλειδί: ΑΦΜ κανονικοποιημένο μέσω kimdis_data.resolve_vat() (βλ.
+docs/MEMORY.md session 6 audit, 2ο πέρασμα). Το organizationVatNumber
+είναι σχεδόν πλήρες στο contract (~99% από 2021-03+) αλλά αραιό σε
+auction/notice (~25%, εκτός του 2025-05 snapshot) -- γι' αυτό χτίζεται
+πρώτα ένα name->VAT lookup από τις γραμμές με ήδη έγκυρο ΑΦΜ (κυρίως
+contract) και χρησιμοποιείται ως fallback για τις υπόλοιπες, μόνο όπου
+το όνομα δεν είναι αμφίσημο (βλ. build_vat_resolver). ΠΡΙΝ (sessions 3-5)
+το grouping γινόταν ανά *όνομα* φορέα αντί για ΑΦΜ· το audit έδειξε ότι
+αυτό συγχώνευε πραγματικά διαφορετικά νομικά πρόσωπα με ίδιο
+καταγεγραμμένο όνομα (π.χ. πανεπιστήμιο + ΕΛΚΕ του, 94 τέτοιες
+περιπτώσεις εντοπίστηκαν) -- άρα re-key σε ΑΦΜ.
+
 Επειδή το ίδιο ΑΦΜ εμφανίζεται σε πολλαπλές εγγραφές/entities με πιθανές
 μικρο-αποκλίσεις (π.χ. σε ποιο entity υπάρχει typeOfContractingAuthority),
 κρατάμε ανά ΑΦΜ την **πιο συχνή** (mode) τιμή κάθε περιγραφικού πεδίου.
@@ -18,7 +30,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR, load_entity
+from kimdis_data import PROCESSED_DIR, build_vat_resolver, load_entity, resolve_vat
 
 # Ποια entities/στήλες συνεισφέρουν σε κάθε κανονικό πεδίο του πίνακα φορέων.
 # Οι στήλες διαφέρουν ελαφρώς ανά entity (π.χ. .key/.value vs επίπεδη στήλη),
@@ -26,7 +38,6 @@ from kimdis_data import PROCESSED_DIR, load_entity
 # πρώτη που υπάρχει.
 FIELD_CANDIDATES: dict[str, dict[str, list[str]]] = {
     "auction": {
-        "vat": ["organizationVatNumber"],
         "name": ["organization.value"],
         "org_type": ["typeOfContractingAuthority"],
         "classification": ["classificationOfPublicLawOrganization.value"],
@@ -34,7 +45,6 @@ FIELD_CANDIDATES: dict[str, dict[str, list[str]]] = {
         "nuts_city": ["nutsCity"],
     },
     "contract": {
-        "vat": ["organizationVatNumber"],
         "name": ["organization.value"],
         "org_type": ["typeOfContractingAuthority.value", "typeOfContractingAuthority"],
         "classification": ["classificationOfPublicLawOrganization"],
@@ -42,7 +52,6 @@ FIELD_CANDIDATES: dict[str, dict[str, list[str]]] = {
         "nuts_city": ["nutsCity"],
     },
     "notice": {
-        "vat": ["organizationVatNumber"],
         "name": ["organization.value"],
         "org_type": [],
         "classification": ["classificationOfPublicLawOrganization"],
@@ -52,13 +61,13 @@ FIELD_CANDIDATES: dict[str, dict[str, list[str]]] = {
 }
 
 
-def extract_entity_rows(entity: str) -> pd.DataFrame:
-    df = load_entity(entity)
+def extract_entity_rows(entity: str, df: pd.DataFrame, resolver: pd.Series) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
     fields = FIELD_CANDIDATES[entity]
     out = pd.DataFrame(index=df.index)
+    out["vat"] = resolve_vat(df, resolver)
     for canonical, candidates in fields.items():
         col = next((c for c in candidates if c in df.columns), None)
         out[canonical] = df[col] if col is not None else None
@@ -67,14 +76,16 @@ def extract_entity_rows(entity: str) -> pd.DataFrame:
 
 
 def build_entity_table() -> pd.DataFrame:
-    frames = [extract_entity_rows(e) for e in ("auction", "contract", "notice")]
+    raw = {e: load_entity(e) for e in ("auction", "contract", "notice")}
+    resolver = build_vat_resolver([df for df in raw.values() if not df.empty])
+
+    frames = [extract_entity_rows(e, df, resolver) for e, df in raw.items()]
     frames = [f for f in frames if not f.empty]
     if not frames:
         return pd.DataFrame()
 
     all_rows = pd.concat(frames, ignore_index=True)
     all_rows = all_rows.dropna(subset=["vat"])
-    all_rows = all_rows[all_rows["vat"].astype(str).str.len() > 0]
 
     def mode_or_none(s: pd.Series):
         s = s.dropna()
