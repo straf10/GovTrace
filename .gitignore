@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Data (τα raw Parquet δεν μπαίνουν στο git προς το παρόν — θα αποφασιστεί storage strategy)
+data/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
