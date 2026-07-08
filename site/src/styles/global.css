@@ -203,6 +203,10 @@ h1 { margin-bottom: 0.25rem; }
 
 #status { color: var(--muted); font-size: 0.9rem; }
 
+main:has(.table-wrap) {
+  max-width: none;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
@@ -212,6 +216,7 @@ h1 { margin-bottom: 0.25rem; }
 table {
   border-collapse: collapse;
   width: 100%;
+  table-layout: fixed;
   font-size: 0.9rem;
 }
 
@@ -219,8 +224,25 @@ th, td {
   padding: 0.5rem 0.75rem;
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-bottom: 1px solid var(--border);
 }
+
+th:first-child, td:first-child {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+#indicators-table th:nth-child(1) { width: 22%; }
+#indicators-table th:nth-child(2) { width: 12%; }
+#indicators-table th:nth-child(3) { width: 10%; }
+#indicators-table th:nth-child(4) { width: 6%; }
+#indicators-table th:nth-child(5) { width: 10%; }
+#indicators-table th:nth-child(6) { width: 12%; }
+#indicators-table th:nth-child(7) { width: 12%; }
+#indicators-table th:nth-child(8) { width: 8%; }
+#indicators-table th:nth-child(9) { width: 8%; }
 
 th:first-child, td:first-child,
 th:nth-child(2), td:nth-child(2),

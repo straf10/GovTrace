@@ -41,21 +41,27 @@ def merge_indicators() -> list[dict]:
     if da.empty:
         return []
 
+    # Ένωση σε (name, year) -- όχι (vat, year): κάθε δείκτης υπολογίζει το δικό
+    # του "πιο συχνό ΑΦΜ" ανά όνομα φορέα (βλ. primary_vat στο
+    # compute_indicators_v1.py), οπότε το vat μπορεί να διαφέρει ή να λείπει
+    # (None) ανάμεσα σε da/hhi/dr για τον ίδιο φορέα -- ένωση πάνω σε vat θα
+    # έχανε αντιστοιχίες ή, χειρότερα, θα πολλαπλασίαζε γραμμές όταν πολλές
+    # None τιμές ταιριάζουν μεταξύ τους.
     merged = da.rename(columns={"organization_vat": "vat", "organization_name": "name"})
     if not hhi.empty:
         merged = merged.merge(
-            hhi.rename(columns={"organization_vat": "vat", "organization_name": "name"})[
-                ["vat", "year", "n_contracts", "hhi", "top1_share"]
+            hhi.rename(columns={"organization_name": "name"})[
+                ["name", "year", "n_contracts", "hhi", "top1_share"]
             ],
-            on=["vat", "year"],
+            on=["name", "year"],
             how="left",
         )
     if not dr.empty:
         merged = merged.merge(
-            dr.rename(columns={"organization_vat": "vat", "organization_name": "name"})[
-                ["vat", "year", "n_linked", "median_discount_pct", "pct_near_zero_discount"]
+            dr.rename(columns={"organization_name": "name"})[
+                ["name", "year", "n_linked", "median_discount_pct", "pct_near_zero_discount"]
             ],
-            on=["vat", "year"],
+            on=["name", "year"],
             how="left",
         )
     if not entities.empty:
