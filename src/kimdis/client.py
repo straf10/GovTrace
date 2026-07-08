@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import random
 import time
-from collections import deque
 from collections.abc import Iterator
 from datetime import date, timedelta
 from enum import Enum
@@ -31,7 +30,9 @@ BASE_URL = "https://cerpp.eprocurement.gov.gr/khmdhs-opendata"
 # δουλεύουμε συντηρητικά με παράθυρα 180 ημερών.
 MAX_WINDOW_DAYS = 180
 
-# Όριο API: 350 req/min. Μένουμε στα 300 για περιθώριο ασφαλείας.
+# Όριο API: 350 req/min. Δοκιμάστηκε 340 με ομοιόμορφο pacing: δεν έδωσε πρακτικό
+# κέρδος ταχύτητας (το bottleneck είναι server-side latency σε συγκεκριμένες σελίδες,
+# ~25s spikes, ανεξάρτητο από τον δικό μας ρυθμό) και αύξησε τα 429. Μένουμε στα 300.
 DEFAULT_REQUESTS_PER_MINUTE = 300
 
 
@@ -66,28 +67,28 @@ def date_windows(
 
 
 class RateLimiter:
-    """Sliding-window rate limiter: το πολύ max_requests αιτήματα ανά period δευτερόλεπτα."""
+    """Ομοιόμορφος (leaky-bucket) rate limiter: σταθερό ελάχιστο interval μεταξύ αιτημάτων.
+
+    Σκόπιμα όχι sliding-window με μετρητή: ένα sliding window επιτρέπει bursts όποτε
+    δεν έχουν γίνει πρόσφατα αιτήματα (π.χ. μετά από μήνες που παραλείφθηκαν γιατί
+    υπήρχαν ήδη τα αρχεία) — και το ΚΗΜΔΗΣ API φαίνεται να απαντά με 429 σε τέτοια
+    bursts ακόμα και όταν το σύνολο/λεπτό είναι εντός ορίου. Η ομοιόμορφη κατανομή
+    πετυχαίνει τον ίδιο μέσο ρυθμό χωρίς ποτέ να στέλνει ριπές.
+    """
 
     def __init__(self, max_requests: int = DEFAULT_REQUESTS_PER_MINUTE, period: float = 60.0):
-        self.max_requests = max_requests
-        self.period = period
-        self._timestamps: deque[float] = deque()
+        self.min_interval = period / max_requests
+        self._last_call: float | None = None
 
     def acquire(self) -> None:
-        """Μπλοκάρει μέχρι να επιτρέπεται το επόμενο αίτημα."""
+        """Μπλοκάρει μέχρι να περάσει το ελάχιστο interval από το προηγούμενο αίτημα."""
         now = time.monotonic()
-        while self._timestamps and now - self._timestamps[0] >= self.period:
-            self._timestamps.popleft()
-        if len(self._timestamps) >= self.max_requests:
-            wait = self.period - (now - self._timestamps[0])
+        if self._last_call is not None:
+            wait = self._last_call + self.min_interval - now
             if wait > 0:
-                logger.debug("Rate limit: αναμονή %.1fs", wait)
                 time.sleep(wait)
-            # καθάρισμα ξανά μετά την αναμονή
-            now = time.monotonic()
-            while self._timestamps and now - self._timestamps[0] >= self.period:
-                self._timestamps.popleft()
-        self._timestamps.append(time.monotonic())
+                now = time.monotonic()
+        self._last_call = now
 
 
 class KimdisClient:

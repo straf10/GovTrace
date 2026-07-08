@@ -1,0 +1,27 @@
+2026-07-08 19:02:26,413 INFO Backfill: 2020–2026, οντότητες: auction, contract, notice
+2026-07-08 19:02:26,616 INFO   ✓ auction_2020_01.parquet (12615 εγγραφές)
+2026-07-08 19:02:26,660 INFO   ✓ contract_2020_01.parquet (12681 εγγραφές)
+2026-07-08 19:02:26,690 INFO   ✓ notice_2020_01.parquet (2823 εγγραφές)
+2026-07-08 19:02:26,730 INFO   ✓ auction_2020_02.parquet (18414 εγγραφές)
+2026-07-08 19:02:26,777 INFO   ✓ contract_2020_02.parquet (15772 εγγραφές)
+2026-07-08 19:02:26,802 INFO   ✓ notice_2020_02.parquet (3939 εγγραφές)
+2026-07-08 19:02:26,839 INFO   ✓ auction_2020_03.parquet (20262 εγγραφές)
+2026-07-08 19:02:26,898 INFO   ✓ contract_2020_03.parquet (17643 εγγραφές)
+2026-07-08 19:02:26,925 INFO   ✓ notice_2020_03.parquet (4051 εγγραφές)
+2026-07-08 19:02:26,961 INFO   ✓ auction_2020_04.parquet (20394 εγγραφές)
+2026-07-08 19:02:27,003 INFO   ✓ contract_2020_04.parquet (17422 εγγραφές)
+2026-07-08 19:02:27,029 INFO   ✓ notice_2020_04.parquet (3812 εγγραφές)
+2026-07-08 19:02:27,064 INFO   ✓ auction_2020_05.parquet (21365 εγγραφές)
+2026-07-08 19:02:27,116 INFO   ✓ contract_2020_05.parquet (18108 εγγραφές)
+2026-07-08 19:02:27,147 INFO   ✓ notice_2020_05.parquet (4795 εγγραφές)
+2026-07-08 19:02:27,147 INFO Άντληση auction 2020-06...
+2026-07-08 19:02:27,147 INFO auction: παράθυρο 2020-06-01 → 2020-06-30
+2026-07-08 19:02:27,603 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=0 "HTTP/1.1 200 OK"
+2026-07-08 19:02:28,078 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=1 "HTTP/1.1 200 OK"
+2026-07-08 19:02:28,531 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=2 "HTTP/1.1 200 OK"
+2026-07-08 19:02:28,968 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=3 "HTTP/1.1 200 OK"
+2026-07-08 19:02:29,419 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=4 "HTTP/1.1 200 OK"
+2026-07-08 19:02:29,881 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=5 "HTTP/1.1 200 OK"
+2026-07-08 19:02:30,314 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=6 "HTTP/1.1 200 OK"
+2026-07-08 19:02:30,734 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=7 "HTTP/1.1 200 OK"
+2026-07-08 19:02:31,151 INFO HTTP Request: POST https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction?page=8 "HTTP/1.1 200 OK"
