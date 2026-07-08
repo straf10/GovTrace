@@ -6,6 +6,9 @@ __pycache__/
 
 # Data (τα raw Parquet δεν μπαίνουν στο git προς το παρόν — θα αποφασιστεί storage strategy)
 data/
+# Εξαίρεση: το JSON του static dashboard ΕΙΝΑΙ build output προς δημοσίευση (site/, βλ. MEMORY.md)
+!site/data/
+!site/data/*.json
 
 # IDE / OS
 .vscode/

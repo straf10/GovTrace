@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Διαφάνεια Δημοσίων Συμβάσεων -- Δείκτες ρίσκου διαδικασιών (v1, σκελετός)</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>Διαφάνεια Δημοσίων Συμβάσεων</h1>
+  <p class="subtitle">Δείκτες ρίσκου διαδικασιών ανά φορέα -- v1 (σκελετός, μερικά δεδομένα)</p>
+</header>
+
+<div class="disclaimer">
+  <strong>Σημαντικό:</strong> Οι παρακάτω δείκτες είναι <em>στατιστικοί δείκτες ρίσκου διαδικασιών</em>,
+  όχι διαπιστώσεις παρανομίας, διαφθοράς ή κακοδιαχείρισης. Ένας υψηλός δείκτης σημαίνει «μοτίβο που,
+  σύμφωνα με τη διεθνή βιβλιογραφία, δικαιολογεί περαιτέρω διερεύνηση» -- τίποτα περισσότερο. Πολλά flags
+  έχουν απολύτως νόμιμες εξηγήσεις.
+  Δείτε <a href="../METHODOLOGY.md">μεθοδολογία</a> και <a href="../DISCLAIMER.md">δικαίωμα απάντησης</a>.
+</div>
+
+<main>
+  <div class="controls">
+    <input id="search" type="text" placeholder="Αναζήτηση φορέα..." />
+    <span id="status">Φόρτωση δεδομένων...</span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="indicators-table">
+      <thead>
+        <tr>
+          <th data-key="name">Φορέας</th>
+          <th data-key="org_type">Τύπος</th>
+          <th data-key="nuts_city">Περιοχή</th>
+          <th data-key="year">Έτος</th>
+          <th data-key="n_total">N αναθέσεων</th>
+          <th data-key="da_count_pct">% απευθείας (πλήθος)</th>
+          <th data-key="da_value_pct">% απευθείας (αξία)</th>
+          <th data-key="hhi">HHI αναδόχων</th>
+          <th data-key="median_discount_pct">Διάμεση έκπτωση %</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  <p>Δεδομένα: ΚΗΜΔΗΣ Open Data (CC BY 4.0). Πλήρης μεθοδολογία, πηγές και περιορισμοί κάθε δείκτη στο
+    <a href="../METHODOLOGY.md">METHODOLOGY.md</a>. Διόρθωση/δικαίωμα απάντησης:
+    <a href="../DISCLAIMER.md">DISCLAIMER.md</a>.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
