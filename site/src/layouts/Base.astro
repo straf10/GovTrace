@@ -1,0 +1,30 @@
+---
+import Header from "../components/Header.astro";
+import DisclaimerStrip from "../components/DisclaimerStrip.astro";
+import Footer from "../components/Footer.astro";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "Ανοιχτά δεδομένα δημοσίων συμβάσεων της Ελλάδας, με δείκτες διαφάνειας διαδικασιών." } = Astro.props;
+---
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content={description} />
+  <title>{title} — Ελλάδα 3.0</title>
+</head>
+<body>
+  <Header />
+  <DisclaimerStrip />
+  <main>
+    <slot />
+  </main>
+  <Footer />
+</body>
+</html>

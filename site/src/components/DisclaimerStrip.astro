@@ -1,0 +1,26 @@
+---
+---
+<div class="disclaimer-strip" id="disclaimer-strip">
+  <div class="inner">
+    <p>
+      Στατιστικοί δείκτες ρίσκου διαδικασιών — όχι διαπιστώσεις παρανομίας.
+      <a href="/methodologia/">Μεθοδολογία</a> · <a href="/apopoiisi/">Δικαίωμα απάντησης</a>
+    </p>
+    <button type="button" id="disclaimer-dismiss" aria-label="Απόκρυψη μπάρας">Κλείσιμο</button>
+  </div>
+</div>
+<script>
+  const KEY = "disclaimer-strip-dismissed";
+  const strip = document.getElementById("disclaimer-strip");
+  const dismissBtn = document.getElementById("disclaimer-dismiss");
+
+  if (strip && sessionStorage.getItem(KEY) === "1") {
+    strip.hidden = true;
+  }
+
+  dismissBtn?.addEventListener("click", () => {
+    if (!strip) return;
+    strip.hidden = true;
+    sessionStorage.setItem(KEY, "1");
+  });
+</script>

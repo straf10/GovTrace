@@ -1,0 +1,12 @@
+---
+import { getEntry, render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+
+const entry = await getEntry("docs", "disclaimer");
+const { Content } = entry ? await render(entry) : { Content: null };
+---
+<Base title="Αποποίηση Ευθύνης" description="Τι είναι και τι δεν είναι η πλατφόρμα, διαδικασία διόρθωσης και δικαίωμα απάντησης.">
+  <div class="doc-content">
+    {Content ? <Content /> : <p>Το αρχείο αποποίησης δεν βρέθηκε.</p>}
+  </div>
+</Base>

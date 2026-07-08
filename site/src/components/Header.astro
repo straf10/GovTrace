@@ -1,0 +1,29 @@
+---
+const { pathname } = Astro.url;
+
+const navItems = [
+  { href: "/", label: "Αρχική" },
+  { href: "/foreis/", label: "Φορείς" },
+  { href: "/methodologia/", label: "Μεθοδολογία" },
+  { href: "/apopoiisi/", label: "Αποποίηση" },
+  { href: "/diorthoseis/", label: "Διορθώσεις" },
+];
+
+function isCurrent(href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname.startsWith(href);
+}
+---
+<header class="site-header">
+  <div class="inner">
+    <a class="site-logo" href="/">Ελλάδα 3.0</a>
+    <nav class="site-nav" aria-label="Κύριο μενού">
+      {navItems.map((item) => (
+        <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined}>{item.label}</a>
+      ))}
+    </nav>
+    <form class="site-search" action="/foreis/" method="get">
+      <input type="search" name="q" placeholder="Βρες τον φορέα σου…" aria-label="Αναζήτηση φορέα" />
+    </form>
+  </div>
+</header>

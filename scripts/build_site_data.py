@@ -22,7 +22,7 @@ import pandas as pd
 
 from kimdis_data import PROCESSED_DIR
 
-SITE_DATA_DIR = PROCESSED_DIR.parent.parent / "site" / "data"
+SITE_DATA_DIR = PROCESSED_DIR.parent.parent / "site" / "public" / "data"
 
 
 def read_csv_or_empty(name: str) -> pd.DataFrame:
@@ -65,7 +65,7 @@ def merge_indicators() -> list[dict]:
             how="left",
         )
 
-    merged = merged.where(pd.notna(merged), None)
+    merged = merged.astype(object).where(pd.notna(merged), None)
     return merged.to_dict(orient="records")
 
 
@@ -88,7 +88,7 @@ def main() -> None:
     }
     out_path = SITE_DATA_DIR / "indicators.json"
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=None), encoding="utf-8")
-    print(f"Site data -> {out_path} ({len(records)} γραμμές φορέα/έτους)")
+    print(f"Site data -> {out_path} ({len(records)} rows)".encode("ascii", "replace").decode("ascii"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,134 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+import Base from "../layouts/Base.astro";
+
+interface Record {
+  vat: string;
+  year: number;
+  n_total: number | null;
+  da_count_pct: number | null;
+}
+
+const dataPath = path.join(process.cwd(), "public", "data", "indicators.json");
+const payload = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+const records: Record[] = payload.records;
+
+const totalOrgs = new Set(records.map((r) => r.vat)).size;
+const totalAwards = records.reduce((sum, r) => sum + (r.n_total || 0), 0);
+
+function weightedAvg(rows: Record[], key: "da_count_pct") {
+  let weightSum = 0;
+  let valueSum = 0;
+  for (const r of rows) {
+    const w = r.n_total || 0;
+    const v = r[key];
+    if (v === null || v === undefined || w === 0) continue;
+    weightSum += w;
+    valueSum += v * w;
+  }
+  return weightSum > 0 ? valueSum / weightSum : null;
+}
+
+const nationalDaPct = weightedAvg(records, "da_count_pct");
+
+const years = Array.from(new Set(records.map((r) => r.year))).sort();
+const yearSeries = years.map((year) => ({
+  year,
+  pct: weightedAvg(
+    records.filter((r) => r.year === year),
+    "da_count_pct",
+  ),
+}));
+
+const periodLabel = years.length ? `${years[0]}–${years[years.length - 1]}` : "--";
+
+// Απλό inline SVG line chart, χωρίς εξάρτηση σε charting library (Sprint A).
+const chartWidth = 480;
+const chartHeight = 160;
+const padding = 28;
+const validSeries = yearSeries.filter((p) => p.pct !== null) as { year: number; pct: number }[];
+const maxPct = Math.max(100, ...validSeries.map((p) => p.pct));
+const points = validSeries.map((p, i) => {
+  const x = padding + (i / Math.max(1, validSeries.length - 1)) * (chartWidth - padding * 2);
+  const y = chartHeight - padding - (p.pct / maxPct) * (chartHeight - padding * 2);
+  return { x, y, ...p };
+});
+const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+---
+<Base title="Αρχική" description="Ανοιχτά δεδομένα δημοσίων συμβάσεων της Ελλάδας, με δείκτες διαφάνειας διαδικασιών.">
+  <section>
+    <h1>Ελλάδα 3.0</h1>
+    <p class="subtitle">Ανοιχτά δεδομένα δημοσίων συμβάσεων της Ελλάδας, με δείκτες διαφάνειας διαδικασιών.</p>
+    <form class="site-search" action="/foreis/" method="get" style="max-width: 32rem;">
+      <input type="search" name="q" placeholder="Βρες τον δήμο σου…" aria-label="Αναζήτηση φορέα" style="width: 100%; padding: 0.75rem 1rem; font-size: 1rem;" />
+    </form>
+  </section>
+
+  <section class="stat-tiles">
+    <div class="stat-tile">
+      <div class="value">{totalOrgs.toLocaleString("el-GR")}</div>
+      <div class="label">Φορείς που καλύπτονται</div>
+      <div class="period">{periodLabel}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="value">{totalAwards.toLocaleString("el-GR")}</div>
+      <div class="label">Πλήθος αναθέσεων</div>
+      <div class="period">{periodLabel}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="value">{nationalDaPct !== null ? `${nationalDaPct.toFixed(1)}%` : "Ανεπαρκή δεδομένα"}</div>
+      <div class="label">Εθνικό % απευθείας αναθέσεων (πλήθος)</div>
+      <div class="period">{periodLabel} · σταθμισμένος μέσος ως προς N ανά φορέα/έτος · <a href="/methodologia/">πώς υπολογίζεται</a></div>
+    </div>
+    <div class="stat-tile">
+      <div class="value">{years.length}</div>
+      <div class="label">Έτη κάλυψης δεδομένων</div>
+      <div class="period">backfill σε εξέλιξη</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Εθνική χρονοσειρά — % απευθείας αναθέσεων</h2>
+    {points.length >= 2 ? (
+      <svg width={chartWidth} height={chartHeight} role="img" aria-label="Εξέλιξη εθνικού ποσοστού απευθείας αναθέσεων ανά έτος">
+        <line x1={padding} y1={chartHeight - padding} x2={chartWidth - padding} y2={chartHeight - padding} stroke="var(--border)" />
+        <path d={linePath} fill="none" stroke="var(--blue-3)" stroke-width="2" />
+        {points.map((p) => (
+          <>
+            <circle cx={p.x} cy={p.y} r="3.5" fill="var(--blue-3)" />
+            <text x={p.x} y={chartHeight - padding + 16} text-anchor="middle" font-size="11" fill="var(--muted)">{p.year}</text>
+            <text x={p.x} y={p.y - 8} text-anchor="middle" font-size="11" fill="var(--text)">{p.pct.toFixed(0)}%</text>
+          </>
+        ))}
+      </svg>
+    ) : (
+      <p class="chart-caption">Ανεπαρκή δεδομένα για χρονοσειρά (χρειάζονται τουλάχιστον 2 έτη).</p>
+    )}
+    <p class="chart-caption">Σταθμισμένος εθνικός μέσος όρος ανά έτος, N = πλήθος αναθέσεων ανά φορέα/έτος. Δεδομένα: ΚΗΜΔΗΣ.</p>
+  </section>
+
+  <section class="entry-cards">
+    <a class="entry-card" href="/foreis/?group=ota">
+      <h3>Δήμοι &amp; Περιφέρειες</h3>
+      <p>Τοπική &amp; περιφερειακή αυτοδιοίκηση</p>
+    </a>
+    <a class="entry-card" href="/foreis/?group=central">
+      <h3>Υπουργεία &amp; κεντρική διοίκηση</h3>
+      <p>Υπουργεία, κεντρικές κυβερνητικές αρχές</p>
+    </a>
+    <a class="entry-card" href="/foreis/?group=other">
+      <h3>Λοιποί φορείς</h3>
+      <p>ΝΠΔΔ, ΝΠΙΔ, ανεξάρτητες αρχές, οργανισμοί δημοσίου δικαίου</p>
+    </a>
+  </section>
+
+  <div class="teaser">
+    <p>
+      Οι δείκτες αυτού του site είναι <strong>στατιστικοί δείκτες ρίσκου διαδικασιών</strong>, όχι διαπιστώσεις παρανομίας.
+      Ένας υψηλός δείκτης σημαίνει «μοτίβο που δικαιολογεί περαιτέρω διερεύνηση» — πολλά έχουν απολύτως νόμιμες εξηγήσεις
+      (επείγουσες ανάγκες, εξειδικευμένες αγορές, μικρά δείγματα, νησιωτικότητα κ.ά.).
+      Δείτε την πλήρη <a href="/methodologia/">μεθοδολογία</a>.
+    </p>
+  </div>
+</Base>

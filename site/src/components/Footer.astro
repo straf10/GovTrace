@@ -1,0 +1,30 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+
+const dataPath = path.join(process.cwd(), "public", "data", "indicators.json");
+let generatedAt: string | null = null;
+try {
+  const payload = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+  generatedAt = payload.generated_at ?? null;
+} catch {
+  generatedAt = null;
+}
+
+const lastUpdated = generatedAt
+  ? new Date(generatedAt).toLocaleDateString("el-GR", { year: "numeric", month: "long", day: "numeric" })
+  : null;
+---
+<footer class="site-footer">
+  <div class="inner">
+    <p>
+      Δεδομένα: ΚΗΜΔΗΣ Open Data (CC BY 4.0){lastUpdated && <> · τελευταία ενημέρωση dataset: {lastUpdated}</>}.
+      Πλήρης μεθοδολογία στη σελίδα <a href="/methodologia/">Μεθοδολογία</a>,
+      δικαίωμα απάντησης/διόρθωσης στην <a href="/apopoiisi/">Αποποίηση</a>.
+    </p>
+    <p>
+      <a href="https://github.com/straf10/RousfetiAI" rel="noopener">Πηγαίος κώδικας (repo)</a> ·
+      <a href="mailto:115450409+straf10@users.noreply.github.com">115450409+straf10@users.noreply.github.com</a>
+    </p>
+  </div>
+</footer>
