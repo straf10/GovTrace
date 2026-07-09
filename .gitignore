@@ -4,11 +4,9 @@ __pycache__/
 *.pyc
 *.egg-info/
 
-# Data (τα raw Parquet δεν μπαίνουν στο git προς το παρόν — θα αποφασιστεί storage strategy)
-data/
-# Εξαίρεση: το JSON του static dashboard ΕΙΝΑΙ build output προς δημοσίευση (site/, βλ. MEMORY.md)
-!site/data/
-!site/data/*.json
+# Data (απόφαση 2026-07-09 #8, tech_report.md §8): τα data μένουν εκτός git
+# προς το παρόν -- το data build τρέχει τοπικά πριν από κάθε deploy.
+/data/
 
 # IDE / OS
 .vscode/

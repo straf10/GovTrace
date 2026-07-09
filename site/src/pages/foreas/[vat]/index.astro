@@ -73,7 +73,13 @@ const discount = indicatorInput("discount");
 const mailtoSubject = encodeURIComponent(`[ΔΙΟΡΘΩΣΗ] ${page.name ?? vat}`);
 const mailto = `mailto:115450409+straf10@users.noreply.github.com?subject=${mailtoSubject}`;
 
-const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction/attachment/${adam}`;
+// S3 (audit): validate ADAM format before building the URL -- ο ΑΔΑΜ μπαίνει
+// σε href attribute χωρίς αυτόν τον έλεγχο θα μπορούσε ένα μη τυπικό string
+// (π.χ. scheme "javascript:") να περάσει ως τιμή, παρότι το Astro κάνει escape
+// το attribute περιεχόμενο.
+const ADAM_RE = /^\d{2}(REQ|PROC|AWRD|SYMV|PAY)\d+$/;
+const isValidAdam = (adam: unknown): adam is string => typeof adam === "string" && ADAM_RE.test(adam);
+const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction/attachment/${encodeURIComponent(adam)}`;
 ---
 <Base title={page.name ?? vat} description={`Δείκτες διαφάνειας διαδικασιών για ${page.name ?? vat} (ΑΦΜ ${vat}).`}>
   <div class="foreas-header">
@@ -211,7 +217,7 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
                 <td>{r.contractor_name ?? "—"}</td>
                 <td>{eur(r.amount_with_vat)}</td>
                 <td>{r.procedure}</td>
-                <td>{r.adam ? <a href={adamUrl(r.adam)} target="_blank" rel="noopener">{r.adam}</a> : "—"}</td>
+                <td>{isValidAdam(r.adam) ? <a href={adamUrl(r.adam)} target="_blank" rel="noopener">{r.adam}</a> : (r.adam ?? "—")}</td>
               </tr>
             ))}
           </tbody>

@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR, build_vat_resolver, load_entity, resolve_vat
+from kimdis_data import PROCESSED_DIR, build_vat_resolver, load_entity, load_vat_resolver, resolve_vat
 
 SITE_DIR = PROCESSED_DIR.parent.parent / "site"
 BUILD_DATA_DIR = SITE_DIR / "src" / "data"   # build-time only, ΟΧΙ deployed
@@ -341,8 +341,11 @@ def sanitize(obj):
         return obj
     if isinstance(obj, np.generic):
         obj = obj.item()
-    if isinstance(obj, float) and pd.isna(obj):
-        return None
+    try:
+        if pd.isna(obj):
+            return None
+    except (TypeError, ValueError):
+        pass
     return obj
 
 
@@ -369,7 +372,15 @@ def main() -> None:
         print("Δεν βρέθηκαν δεδομένα auction σε data/raw/.")
         return
 
-    resolver = build_vat_resolver([auctions])
+    # A3: προτιμάται ο persisted resolver (build_entity_table.py, χτισμένος από
+    # auction+contract+notice) -- πριν τη διόρθωση αυτό το script έχτιζε δικό
+    # του resolver μόνο από auctions (~25% ΑΦΜ fill), με αποτέλεσμα οι σελίδες
+    # προφίλ να κλειδώνονται σε διαφορετικά ΑΦΜ από τα indicator CSV.
+    resolver = load_vat_resolver()
+    if resolver is None:
+        print("(Δεν βρέθηκε data/processed/vat_resolver.csv -- τρέξε πρώτα build_entity_table.py. "
+              "Χτίζεται προσωρινός resolver μόνο από auctions -- λιγότερο πλήρης.)")
+        resolver = build_vat_resolver([auctions])
     pages = build_foreas_facts(auctions, resolver)
     attach_indicators(pages, da, hhi, dr, percentiles, group_of, entities)
 

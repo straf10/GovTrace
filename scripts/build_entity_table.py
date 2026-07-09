@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR, build_vat_resolver, load_entity, resolve_vat
+from kimdis_data import NAME_COL, PROCESSED_DIR, VAT_COL, build_vat_resolver, load_entity, resolve_vat, save_vat_resolver
 
 # Ποια entities/στήλες συνεισφέρουν σε κάθε κανονικό πεδίο του πίνακα φορέων.
 # Οι στήλες διαφέρουν ελαφρώς ανά entity (π.χ. .key/.value vs επίπεδη στήλη),
@@ -75,9 +75,23 @@ def extract_entity_rows(entity: str, df: pd.DataFrame, resolver: pd.Series) -> p
     return out
 
 
+def _needed_columns(entity: str) -> list[str]:
+    """P1 (audit): μόνο οι στήλες που πραγματικά χρειάζεται αυτό το script,
+    αντί ολόκληρου του σχήματος (~53-65 στήλες, με ογκώδη nested JSON πεδία)."""
+    candidates = {NAME_COL, VAT_COL}
+    for cols in FIELD_CANDIDATES[entity].values():
+        candidates.update(cols)
+    return sorted(candidates)
+
+
 def build_entity_table() -> pd.DataFrame:
-    raw = {e: load_entity(e) for e in ("auction", "contract", "notice")}
+    raw = {e: load_entity(e, columns=_needed_columns(e)) for e in ("auction", "contract", "notice")}
+    # Ενιαίος resolver (audit A3): χτίζεται εδώ από auction+contract+notice
+    # (το contract είναι η ~99% πηγή ΑΦΜ) και αποθηκεύεται ως persisted
+    # artifact -- compute_indicators_v1.py και build_foreas_data.py τον
+    # διαβάζουν από εδώ αντί να τον ξαναχτίζουν με διαφορετικά inputs.
     resolver = build_vat_resolver([df for df in raw.values() if not df.empty])
+    save_vat_resolver(resolver)
 
     frames = [extract_entity_rows(e, df, resolver) for e, df in raw.items()]
     frames = [f for f in frames if not f.empty]

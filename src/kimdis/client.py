@@ -1,7 +1,7 @@
 """Client για το ΚΗΜΔΗΣ Open Data API.
 
 Χαρακτηριστικά:
-- Rate limiting με sliding window (default 300 req/min, κάτω από το όριο 350 του API).
+- Rate limiting με leaky-bucket (default 300 req/min, κάτω από το όριο 350 του API).
 - Retry με exponential backoff σε 429 (σεβασμός Retry-After) και 5xx.
 - Αυτόματη σελιδοποίηση (50 εγγραφές/σελίδα, page query param).
 - Σπάσιμο μεγάλων χρονικών διαστημάτων σε παράθυρα ≤180 ημερών.
@@ -19,15 +19,27 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 from enum import Enum
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
+
+class PaginationIncompleteError(RuntimeError):
+    """Το API επέστρεψε λιγότερες εγγραφές από όσες δήλωσε στο totalElements
+    (ή ένα 404 διέκοψε τη σελιδοποίηση πριν την τελευταία σελίδα).
+
+    Σκόπιμα δεν καταπίνεται σιωπηλά: ο καλών (backfill) πρέπει να μην γράψει
+    το parquet του μήνα και να τον καταγράψει ως αποτυχημένο (βλ. audit A1).
+    """
+
+
 BASE_URL = "https://cerpp.eprocurement.gov.gr/khmdhs-opendata"
 
-# Το API αποδέχεται αναζητήσεις με εύρος ημερομηνιών έως ~6 μήνες·
-# δουλεύουμε συντηρητικά με παράθυρα 180 ημερών.
+# Το research (βλ. RESEARCH_RESULTS.md) έδειξε ότι το API δέχεται εύρη ≥730 ημερών·
+# δουλεύουμε συντηρητικά με παράθυρα 180 ημερών ούτως ή άλλως, αφού το backfill
+# προχωρά ανά μήνα.
 MAX_WINDOW_DAYS = 180
 
 # Όριο API: 350 req/min. Δοκιμάστηκε 340 με ομοιόμορφο pacing: δεν έδωσε πρακτικό
@@ -193,7 +205,10 @@ class KimdisClient:
     ) -> dict[str, Any]:
         """Επιστρέφει μία σελίδα αποτελεσμάτων (Spring Page object).
 
-        Το 404 του API σημαίνει «δεν βρέθηκαν δεδομένα» και επιστρέφεται ως κενή σελίδα.
+        Το 404 στη σελίδα 0 σημαίνει «δεν βρέθηκαν δεδομένα» και επιστρέφεται ως κενή
+        σελίδα. Ένα 404 σε page>0 ΔΕΝ σημαίνει τέλος δεδομένων -- σημαίνει transient
+        σφάλμα στη μέση της σελιδοποίησης (βλ. audit A1) και γίνεται raise, ώστε ο
+        καλών να μην το εκλάβει σιωπηλά ως ολοκλήρωση.
         """
         body = dict(criteria or {})
         if endpoint is Endpoint.REQUEST:
@@ -203,24 +218,44 @@ class KimdisClient:
             "POST", f"/{endpoint.value}", params={"page": page}, json=body
         )
         if response.status_code == 404:
-            return {"content": [], "totalPages": 0, "totalElements": 0, "last": True}
+            if page == 0:
+                return {"content": [], "totalPages": 0, "totalElements": 0, "last": True}
+            raise PaginationIncompleteError(
+                f"{endpoint.value}: 404 στη σελίδα {page} (page>0) -- πιθανό transient "
+                f"σφάλμα, όχι τέλος δεδομένων"
+            )
         response.raise_for_status()
         return response.json()
 
     def iter_records(
         self, endpoint: Endpoint, criteria: dict[str, Any] | None = None
     ) -> Iterator[dict[str, Any]]:
-        """Διατρέχει όλες τις σελίδες μιας αναζήτησης και παράγει τις εγγραφές μία-μία."""
+        """Διατρέχει όλες τις σελίδες μιας αναζήτησης και παράγει τις εγγραφές μία-μία.
+
+        Ελέγχει το totalElements της πρώτης σελίδας έναντι του πλήθους των
+        εγγραφών που τελικά παράχθηκαν· αν υπολείπεται, raise PaginationIncompleteError
+        αντί να τερματίσει σιωπηλά (βλ. audit A1 -- σιωπηλή περικοπή δεδομένων).
+        """
         page = 0
+        total_elements: int | None = None
+        yielded = 0
         while True:
             result = self.search_page(endpoint, criteria, page=page)
+            if page == 0:
+                total_elements = result.get("totalElements")
             content = result.get("content") or []
+            yielded += len(content)
             yield from content
             if result.get("last", True) or not content:
-                total = result.get("totalElements")
+                if total_elements is not None and yielded < total_elements:
+                    raise PaginationIncompleteError(
+                        f"{endpoint.value}: ολοκληρώθηκε στη σελίδα {page} με "
+                        f"{yielded}/{total_elements} εγγραφές -- πιθανή σιωπηλή "
+                        f"περικοπή pagination"
+                    )
                 logger.info(
                     "%s: ολοκληρώθηκε στη σελίδα %d (totalElements=%s)",
-                    endpoint.value, page, total,
+                    endpoint.value, page, total_elements,
                 )
                 return
             page += 1
@@ -263,6 +298,8 @@ class KimdisClient:
 
     def attachment_pdf(self, endpoint: Endpoint, reference_number: str) -> bytes:
         """Κατεβάζει το PDF μιας πράξης με βάση τον ΑΔΑΜ της."""
-        response = self._request("GET", f"/{endpoint.value}/attachment/{reference_number}")
+        response = self._request(
+            "GET", f"/{endpoint.value}/attachment/{quote(reference_number, safe='')}"
+        )
         response.raise_for_status()
         return response.content

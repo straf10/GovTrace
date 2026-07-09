@@ -59,11 +59,30 @@ const columns = [
     other: (t) => !GROUP_MATCHERS.ota(t) && !GROUP_MATCHERS.central(t),
   };
 
+  // S1 (audit): name/org_type/nuts_city προέρχονται από ΚΗΜΔΗΣ -- δεδομένα
+  // τρίτων, μη ελεγχόμενα -- και μπαίνουν σε innerHTML παρακάτω. Χωρίς αυτό
+  // το escaping ένα όνομα φορέα με `<img src=x onerror=...>` θα εκτελούνταν.
+  function esc(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // Το ΑΦΜ (r.vat) μπαίνει ανεξέλεγκτο σε href attribute -- ελέγχουμε μορφή
+  // (9 ψηφία) πριν το χρησιμοποιήσουμε, ώστε ένα scheme (π.χ. javascript:)
+  // να μην περάσει ποτέ ως τιμή.
+  function isValidVat(vat: unknown): vat is string {
+    return typeof vat === "string" && /^\d{9}$/.test(vat);
+  }
+
   function fmt(value: string | number | null, key: string): string {
     if (value === null || value === undefined) return '<span class="badge-missing">Ανεπαρκή δεδομένα</span>';
     if (key === "hhi") return Number(value).toFixed(3);
     if (NUMERIC_KEYS.has(key) && key !== "year" && key !== "n_total") return `${Number(value).toFixed(1)}%`;
-    return String(value);
+    return esc(String(value));
   }
 
   function median(values: number[]): number | null {
@@ -126,7 +145,7 @@ const columns = [
             cls = [above ? "above-median" : "", intensityClass(value as number, m)].filter(Boolean).join(" ");
           }
           let content = fmt(value, c);
-          if (c === "name" && r.vat) {
+          if (c === "name" && isValidVat(r.vat)) {
             content = `<a href="/foreas/${r.vat}/">${content}</a>`;
           }
           return `<td${cls ? ` class="${cls}"` : ""}>${content}</td>`;

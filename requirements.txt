@@ -1,3 +1,5 @@
 httpx>=0.28
 pandas>=3.0
 pyarrow>=24.0
+
+# Αναπαραγώγιμο build: pip install -r requirements.lock (Python 3.14.6, βλ. tech_report.md S2)
