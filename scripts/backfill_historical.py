@@ -39,14 +39,33 @@ logger = logging.getLogger("backfill_historical")
 FAILURES_PATH = Path("data/raw/_backfill_failures.json")
 
 
+INT64_MAX = 2**63 - 1
+INT64_MIN = -(2**63)
+
+
 def flatten(records: list[dict]) -> pd.DataFrame:
-    """json_normalize στο πρώτο επίπεδο· εναπομείναντα nested list/dict σε JSON strings."""
+    """json_normalize στο πρώτο επίπεδο· εναπομείναντα nested list/dict σε JSON strings.
+
+    Ακραίες τιμές int εκτός int64 (παρατηρήθηκε π.χ. contractDuration=8e19 στο
+    auction_2025_04 -- σαφώς κατεστραμμένη τιμή πηγής) γίνονται None αντί να
+    σκάει το pyarrow στο to_parquet.
+    """
     df = pd.json_normalize(records)
     for col in df.columns:
         if df[col].map(lambda v: isinstance(v, (list, dict))).any():
             df[col] = df[col].map(
                 lambda v: json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v
             )
+        elif df[col].map(lambda v: isinstance(v, int) and not isinstance(v, bool)).any():
+            oversized = df[col].map(
+                lambda v: isinstance(v, int) and not isinstance(v, bool) and not (INT64_MIN <= v <= INT64_MAX)
+            )
+            if oversized.any():
+                logger.warning(
+                    "flatten: %d ακραίες τιμές εκτός int64 στη στήλη %r -- μηδενίζονται",
+                    oversized.sum(), col,
+                )
+                df.loc[oversized, col] = None
     return df
 
 
@@ -170,7 +189,13 @@ def audit_and_repair(client: KimdisClient, out_dir: Path, start_year: int, end_y
                         out_path.unlink()
                     continue
 
-                df.to_parquet(out_path, index=False)
+                try:
+                    df.to_parquet(out_path, index=False)
+                except Exception as e:
+                    logger.error("Audit: αποτυχία εγγραφής %s %04d-%02d: %s", entity, year, month, e)
+                    remaining_failures.append({"entity": entity, "year": year, "month": month, "error": str(e)})
+                    continue
+
                 repaired += 1
                 logger.info("  ✓ επανορθώθηκε %s (%d εγγραφές)", out_path.name, len(df))
 

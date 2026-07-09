@@ -91,6 +91,22 @@ See `docs/` folder for:
 
 ---
 
-**Status**: Phase 1 — post-Sprint B (2026-07-09). Entity profiles `/foreas/<vat>/` shipped, pipeline re-keyed to normalized VAT, tech-audit fixes applied, 29 tests green. Next (Sprint C): full backfill re-run → pipeline re-run → first deploy (Cloudflare Pages + CI). See [docs/MEMORY.md](docs/MEMORY.md) for the detailed session log.
+**Status**: Phase 1 — Sprint C complete (2026-07-09). Full backfill re-run, pipeline re-run (12.827 unique VATs, 6.191 entity profiles), first live deploy, and CI wired up. **Live site**: https://ellada30.pages.dev. See [docs/MEMORY.md](docs/MEMORY.md) for the detailed session log.
 
-**Latest changes**: `12e0088` audit-fix follow-up · `faf592d` security/bug fixes (XSS escaping, pagination completeness, unified VAT resolver, test suite) · `c9ae60b` Sprint B — entity profiles + VAT re-key.
+### Deploying
+
+Static site, hosted on Cloudflare Pages (free tier), project `ellada30`. Site data (`site/src/data/`, `site/public/data/`) is gitignored — CI cannot rebuild it from a bare checkout, so the deploy flow is:
+
+```bash
+cd site && npm run build                                    # 1. build site/dist locally
+cd dist && zip -q -r -X ../../site-dist.zip .                # 2. zip (POSIX zip only — PowerShell's
+                                                               #    Compress-Archive writes backslash paths
+                                                               #    that break `unzip` on the Linux CI runner)
+cd ../.. 
+gh release upload site-data-latest site-dist.zip --clobber   # 3. publish as the CI's data source
+gh workflow run deploy.yml                                   # 4. trigger the Cloudflare Pages deploy
+```
+
+`.github/workflows/deploy.yml` runs on `workflow_dispatch` (manual trigger, not every push — the site only changes when the data pipeline is re-run) and deploys via `cloudflare/wrangler-action`. Repo secrets `CLOUDFLARE_API_TOKEN` (Pages:Edit only) and `CLOUDFLARE_ACCOUNT_ID` are required.
+
+**Latest changes**: `4759863` Cloudflare Pages deploy workflow + CI · `12e0088` audit-fix follow-up · `faf592d` security/bug fixes (XSS escaping, pagination completeness, unified VAT resolver, test suite) · `c9ae60b` Sprint B — entity profiles + VAT re-key.
