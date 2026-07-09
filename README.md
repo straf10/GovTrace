@@ -21,32 +21,48 @@ pip install -r requirements.txt
 
 ### Run the dashboard locally
 
-Open `site/index.html` in a browser — it's a static site that loads data from `site/data/indicators.json`.
+The dashboard is an [Astro](https://astro.build/) static site in `site/`:
+
+```bash
+cd site
+npm install
+npm run dev      # local dev server
+npm run build    # full static build (~3,200 pages)
+```
 
 ### Rebuild the data
 
 ```bash
-python scripts/build_entity_table.py  # Fetch/process ΚΗΜΔΗΣ data
-python scripts/build_site_data.py     # Generate dashboard JSON
+python scripts/backfill_historical.py    # Fetch raw ΚΗΜΔΗΣ history (long-running)
+python scripts/build_entity_table.py     # Entity registry + VAT resolver
+python scripts/compute_indicators_v1.py  # Risk indicators
+python scripts/build_site_data.py        # indicators.json for the /foreis/ table
+python scripts/build_foreas_data.py      # Per-entity profile data
 ```
 
 ## 📁 Structure
 
 ```
 src/
-  kimdis/                    # ΚΗΜΔΗΣ API client & data processing
+  kimdis/                    # ΚΗΜΔΗΣ API client (rate limiting, pagination, retries)
 scripts/
-  build_entity_table.py      # Fetch & transform raw procurement data
-  build_site_data.py         # Generate indicators.json for dashboard
-site/
-  index.html, app.js, style.css   # Static dashboard (no build step)
-  data/
-    indicators.json          # Dashboard data (build output)
+  backfill_historical.py     # Full-history backfill (2020+) with completeness audit
+  build_entity_table.py      # Entity registry (normalized VAT) + persisted VAT resolver
+  compute_indicators_v1.py   # Risk indicators (direct-award %, HHI, bid-splitting, discount)
+  build_site_data.py         # Generate indicators.json for the /foreis/ table
+  build_foreas_data.py       # Per-entity profile data for /foreas/<vat>/ pages
+site/                        # Astro static site (Node build, zero-JS-by-default pages)
+  src/pages/                 # /, /foreis/, /foreas/<vat>/, /methodologia/, ...
+  public/data/               # Published JSON (build output, not tracked in git)
+tests/                       # pytest suite (29 tests)
 docs/
-  METHODOLOGY.md             # Indicator definitions & methodology
-  DISCLAIMER.md              # Legal disclaimer & methodology caveats
+  METHODOLOGY.md             # Indicator definitions & methodology (+ changelog)
+  DISCLAIMER.md              # Legal disclaimer & correction/right-of-reply process
   PLAN.md                    # Roadmap & phase plan
-  RESEARCH_RESULTS.md        # Research & findings
+  UI_UX_PLAN.md              # Per-page UI/UX plan & design decisions
+  RESEARCH_RESULTS.md        # ΚΗΜΔΗΣ API research & findings
+  tech_report.md             # Technical audit (2026-07-09) & fix plan
+  MEMORY.md                  # Per-session project log & current state
 ```
 
 ## ⚙️ Technical
@@ -59,17 +75,22 @@ docs/
 ## 📖 Documentation
 
 See `docs/` folder for:
-- **METHODOLOGY.md** — risk indicator definitions
-- **DISCLAIMER.md** — legal notice & caveats
+- **METHODOLOGY.md** — risk indicator definitions (versioned changelog)
+- **DISCLAIMER.md** — legal notice, correction process & right of reply
 - **PLAN.md** — development roadmap
+- **UI_UX_PLAN.md** — site structure & UI/UX decisions
+- **tech_report.md** — technical audit & fix plan
+- **MEMORY.md** — per-session project log (current state)
 
 ## 🔗 Data source
 
 ΚΗΜΔΗΣ API: Central registry of Greek public contracts
-- Rate limit: 300 req/min
+- Rate limit: 350 req/min documented — we run conservatively at 300
 - Historical data: 2020+
 - Last sync: See backfill.log (local, not tracked)
 
 ---
 
-**Status**: Phase 1 (entity table, core indicators, dashboard skeleton)
+**Status**: Phase 1 — post-Sprint B (2026-07-09). Entity profiles `/foreas/<vat>/` shipped, pipeline re-keyed to normalized VAT, tech-audit fixes applied, 29 tests green. Next (Sprint C): full backfill re-run → pipeline re-run → first deploy (Cloudflare Pages + CI). See [docs/MEMORY.md](docs/MEMORY.md) for the detailed session log.
+
+**Latest changes**: `12e0088` audit-fix follow-up · `faf592d` security/bug fixes (XSS escaping, pagination completeness, unified VAT resolver, test suite) · `c9ae60b` Sprint B — entity profiles + VAT re-key.
