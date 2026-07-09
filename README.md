@@ -1,4 +1,4 @@
-# Rousfeti AI — Διαφάνεια Δημοσίων Συμβάσεων
+# Ellada 3.0 — Διαφάνεια Δημοσίων Συμβάσεων
 
 Analysis and visualization of Greek public procurement data (ΚΗΜΔΗΣ) to identify procurement anomalies and risk indicators.
 
