@@ -78,3 +78,27 @@ def test_load_entity_dedupes_reference_number(tmp_path):
     assert sorted(result["referenceNumber"]) == ["24REQ001", "24REQ002"]
     kept = result[result["referenceNumber"] == "24REQ002"]
     assert kept["value"].iloc[0] == 999  # keep="last" -> το πιο πρόσφατο αρχείο κερδίζει
+
+
+def test_load_entity_keeps_rows_with_null_reference_number(tmp_path):
+    # F4: το drop_duplicates θεωρούσε τα NaN ίσα -- πολλαπλές γραμμές χωρίς ΑΔΑΜ
+    # έπρεπε να επιζήσουν, όχι να συγχωνευτούν σε μία.
+    df = pd.DataFrame({"referenceNumber": [None, None, "24REQ001"], "value": [1, 2, 3]})
+    df.to_parquet(tmp_path / "auction_2024_01.parquet", index=False)
+
+    result = load_entity("auction", raw_dir=tmp_path)
+    assert len(result) == 3
+
+
+def test_load_entity_fills_column_missing_from_one_file_schema(tmp_path):
+    # F1: pd.read_parquet(columns=) σκάει με ArrowInvalid όταν λείπει στήλη από
+    # ένα αρχείο (π.χ. auction_2025_05 χωρίς typeOfContractingAuthority).
+    df1 = pd.DataFrame({"referenceNumber": ["24REQ001"], "typeOfContractingAuthority": ["A"]})
+    df2 = pd.DataFrame({"referenceNumber": ["24REQ002"]})  # λείπει η στήλη
+    df1.to_parquet(tmp_path / "auction_2024_01.parquet", index=False)
+    df2.to_parquet(tmp_path / "auction_2024_02.parquet", index=False)
+
+    result = load_entity("auction", raw_dir=tmp_path, columns=["referenceNumber", "typeOfContractingAuthority"])
+    assert sorted(result["referenceNumber"]) == ["24REQ001", "24REQ002"]
+    missing_row = result[result["referenceNumber"] == "24REQ002"]
+    assert missing_row["typeOfContractingAuthority"].isna().all()

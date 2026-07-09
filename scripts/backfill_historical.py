@@ -120,7 +120,9 @@ def audit_and_repair(client: KimdisClient, out_dir: Path, start_year: int, end_y
     checked = 0
 
     for year in range(start_year, end_year + 1):
-        max_month = 12 if year < end_year else today.month - 1
+        if year > today.year:
+            continue
+        max_month = 12 if year < today.year else today.month - 1
         for month in range(1, max_month + 1):
             if year == today.year and month >= today.month:
                 continue
@@ -203,24 +205,29 @@ def main() -> None:
     today = date.today()
     logger.info("Backfill: %d–%d, οντότητες: %s", args.start_year, args.end_year, ", ".join(args.entities))
 
+    # F3/decision #5: καθάρισμα τυχόν ημιτελούς αρχείου του τρέχοντος μήνα από
+    # προηγούμενο run, ΠΡΙΝ τον κύριο βρόχο -- ο τρέχων μήνας εξαιρείται πάντα
+    # από τον βρόχο (A2), άρα το cleanup πρέπει να γίνεται εδώ για να μην είναι
+    # νεκρός κώδικας.
+    for entity in args.entities:
+        out_path = args.out / f"{entity}_{today.year}_{today.month:02d}.parquet"
+        if out_path.exists():
+            logger.info("Διαγραφή ημιτελούς αρχείου τρέχοντος μήνα: %s", out_path.name)
+            out_path.unlink()
+
     with KimdisClient() as client:
         for year in range(args.start_year, args.end_year + 1):
-            # A2: ο τρέχων μήνας εξαιρείται πάντα -- είναι εξ ορισμού ημιτελής και
-            # μια ξαναεκτέλεση την ίδια μέρα δεν θα τον ξαναγράψει (skip-existing).
-            max_month = 12 if year < args.end_year else today.month - 1
+            # A2/F3: ο τρέχων μήνας και οποιοσδήποτε μελλοντικός μήνας εξαιρούνται
+            # πάντα, ανεξάρτητα από το --end-year -- υπολογισμός από το σημερινό
+            # έτος/μήνα, όχι από το args.end_year (ένα --end-year μεγαλύτερο του
+            # τρέχοντος έτους παρέκαμπτε πριν αυτή την προστασία).
+            if year > today.year:
+                continue
+            max_month = 12 if year < today.year else today.month - 1
             for month in range(1, max_month + 1):
                 for entity in args.entities:
                     endpoint = Endpoint(entity)
                     out_path = args.out / f"{entity}_{year}_{month:02d}.parquet"
-
-                    # Καθάρισμα τυχόν ημιτελούς αρχείου του τρέχοντος μήνα από
-                    # προηγούμενο run (decision #5) -- δεν θα συμβεί ποτέ μέσα σε
-                    # αυτό το loop αφού ο τρέχων μήνας εξαιρείται, αλλά προστατεύει
-                    # από παλιά αρχεία που έμειναν πίσω.
-                    if year == today.year and month == today.month and out_path.exists():
-                        logger.info("Διαγραφή ημιτελούς αρχείου τρέχοντος μήνα: %s", out_path.name)
-                        out_path.unlink()
-                        continue
 
                     # Παραλείπουμε αν υπάρχει ήδη (P2: μόνο footer metadata, όχι πλήρες read)
                     if out_path.exists():

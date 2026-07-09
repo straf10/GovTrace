@@ -8,6 +8,12 @@ __pycache__/
 # προς το παρόν -- το data build τρέχει τοπικά πριν από κάθε deploy.
 /data/
 
+# F2 (tech_report.md §9): build output του site (JSON δεδομένων), κατά λάθος
+# committαρίστηκε στο faf592d όταν το /data/ έγινε anchored -- η ίδια απόφαση
+# #8 ισχύει και για αυτά, το site data build τρέχει τοπικά.
+/site/src/data/
+/site/public/data/
+
 # IDE / OS
 .vscode/
 .idea/

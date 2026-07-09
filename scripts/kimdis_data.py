@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
@@ -28,14 +29,26 @@ def load_entity(entity: str, raw_dir: Path = RAW_DIR, columns: list[str] | None 
 
     ``columns``: αν δοθεί, διαβάζονται μόνο αυτές οι στήλες (pyarrow column
     pruning) -- σημαντικό για το build_foreas_data.py που διαβάζει ολόκληρο
-    το ιστορικό σε ένα πέρασμα.
+    το ιστορικό σε ένα πέρασμα. Στήλες που ζητούνται αλλά λείπουν από το
+    σχήμα ενός συγκεκριμένου αρχείου (F1: διαφορετικά μηνιαία σχήματα, π.χ.
+    auction_2025_05 χωρίς typeOfContractingAuthority) διαβάζονται παραλείποντας
+    τις, και συμπληρώνονται με None ώστε το τελικό concat να έχει ενιαίο σχήμα
+    αντί να σκάει με ArrowInvalid.
     """
     files = sorted(raw_dir.glob(f"{entity}_*.parquet"))
     if not files:
         return pd.DataFrame()
     frames = []
     for f in files:
-        df = pd.read_parquet(f, columns=columns)
+        if columns is None:
+            df = pd.read_parquet(f)
+        else:
+            available = set(pq.ParquetFile(f).schema_arrow.names)
+            present = [c for c in columns if c in available]
+            df = pd.read_parquet(f, columns=present)
+            for missing_col in columns:
+                if missing_col not in df.columns:
+                    df[missing_col] = None
         _, year, month = f.stem.split("_")
         df["_source_year"] = int(year)
         df["_source_month"] = int(month)
@@ -47,7 +60,12 @@ def load_entity(entity: str, raw_dir: Path = RAW_DIR, columns: list[str] | None 
     # μετρημένα στο audit), αλλά downstream joins πάνω σε referenceNumber
     # (π.χ. discount_rate) σκάνε με InvalidIndexError αν εμφανιστεί ένα.
     if "referenceNumber" in result.columns:
-        result = result.drop_duplicates(subset="referenceNumber", keep="last")
+        # F4: drop_duplicates θεωρεί τα NaN ίσα -- γραμμές χωρίς ΑΔΑΜ θα
+        # κατέρρεαν σιωπηλά σε μία. Dedupe μόνο στις μη-κενές τιμές.
+        ref = result["referenceNumber"]
+        dup_mask = ref.notna() & ref.duplicated(keep="last")
+        if dup_mask.any():
+            result = result[~dup_mask]
     return result
 
 
