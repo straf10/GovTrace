@@ -14,6 +14,13 @@ __pycache__/
 /site/src/data/
 /site/public/data/
 
+# Secrets
+.env
+.env.*
+
+# Wrangler local state
+.wrangler/
+
 # IDE / OS
 .vscode/
 .idea/
