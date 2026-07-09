@@ -109,18 +109,24 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
         pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce")
     )
 
-    def first_contractor_vat(raw: str | None) -> str | None:
+    def parse_members(raw: str | None) -> list[dict]:
         if not raw:
-            return None
+            return []
         try:
             members = json.loads(raw)
         except (TypeError, json.JSONDecodeError):
-            return None
-        if not members:
-            return None
-        return members[0].get("vatNumber")
+            return []
+        return members or []
 
-    df["contractor_vat"] = df["contractingDataDetails.contractingMembersDataList"].map(first_contractor_vat)
+    # B2 (tech_report v2 / απόφαση #6): το HHI πιστώνει όλη την αξία στον
+    # ΠΡΩΤΟ ανάδοχο (members[0]) όταν μια σύμβαση έχει πολλαπλά μέλη
+    # (κοινοπραξία) -- δεν υπάρχει στα δεδομένα ΚΗΜΔΗΣ επιμερισμός αξίας ανά
+    # μέλος. Αυτή είναι ρητή, δηλωμένη παραδοχή (βλ. METHODOLOGY §4.2)· το
+    # `pct_multi_member` παρακάτω μετρά πόσο συχνά ενεργοποιείται, ώστε να
+    # φαίνεται το μέγεθος της πιθανής μεροληψίας.
+    df["members"] = df["contractingDataDetails.contractingMembersDataList"].map(parse_members)
+    df["contractor_vat"] = df["members"].map(lambda m: m[0].get("vatNumber") if m else None)
+    df["is_multi_member"] = df["members"].map(len) > 1
     df = df.dropna(subset=["vat_norm"])
 
     rows = []
@@ -128,6 +134,7 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
         name = mode_name(g["organization.value"])
         g = g.dropna(subset=["contractor_vat", "value"])
         n = len(g)
+        pct_multi_member = round(100.0 * g["is_multi_member"].sum() / n, 2) if n else None
         if n < MIN_N_HHI:
             rows.append(
                 {
@@ -137,6 +144,7 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
                     "n_contracts": n,
                     "hhi": None,
                     "top1_share": None,
+                    "pct_multi_member": pct_multi_member,
                     "note": f"ανεπαρκή δεδομένα (N<{MIN_N_HHI})",
                 }
             )
@@ -154,6 +162,7 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
                 "n_contracts": n,
                 "hhi": round(hhi, 4),
                 "top1_share": round(float(shares.max()), 4),
+                "pct_multi_member": pct_multi_member,
                 "note": None,
             }
         )

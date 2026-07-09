@@ -19,8 +19,19 @@ jobs:
           mkdir -p site/dist
           unzip -q site-dist.zip -d site/dist
 
+      - name: Print build-info (traceability, B4)
+        run: |
+          if [ -f site/dist/build-info.json ]; then
+            echo "=== build-info.json (τι ακριβώς θα γίνει deploy) ==="
+            cat site/dist/build-info.json
+          else
+            echo "::warning::site/dist/build-info.json λείπει -- το asset ανέβηκε χωρίς scripts/build_release_zip.py, δεν μπορεί να επιβεβαιωθεί ποιο commit/δεδομένα αντιστοιχούν σε αυτό το deploy."
+          fi
+
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        # B7 (tech_report v2): pinned σε commit SHA αντί για το mutable tag
+        # `v3` -- το action τρέχει με τα δύο Cloudflare secrets στο env του.
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

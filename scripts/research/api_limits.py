@@ -5,14 +5,14 @@ Research script - Δοκιμή για:
 2. Μέγιστο εύρος ημερών (dateFrom→dateTo)
 3. Ανάλυση δείγματος για πεδία προσφορών
 
-Τρέξε με: python scripts/research_api_limits.py
+Τρέξε με: python scripts/research/api_limits.py
 """
 
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from kimdis.client import KimdisClient, Endpoint
 import logging

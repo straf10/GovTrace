@@ -1,8 +1,8 @@
 """Δοκιμή ευρους ιστορικού: ποια χρόνια έχουν δεδομένα στο ΚΗΜΔΗΣ API.
 
 Χρήση:
-    python scripts/test_data_range.py
-    python scripts/test_data_range.py --start-year 2010 --end-year 2025
+    python scripts/research/data_range.py
+    python scripts/research/data_range.py --start-year 2010 --end-year 2025
 
 Αποτέλεσμα: πίνακας με τα έτη που έχουν δεδομένα + αριθμό αναθέσεων.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from kimdis import Endpoint, KimdisClient
 

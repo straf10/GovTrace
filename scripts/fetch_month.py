@@ -23,49 +23,17 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from kimdis import Endpoint, KimdisClient
+from kimdis_data import completeness_report as _completeness_report
+from kimdis_data import flatten
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("fetch_month")
 
 
-def flatten(records: list[dict]) -> pd.DataFrame:
-    """json_normalize στο πρώτο επίπεδο· τα εναπομείναντα nested list/dict σε JSON strings.
-
-    Κρατάμε έτσι το 100% της πληροφορίας στο Parquet χωρίς εύθραυστα nested schemas.
-    """
-    df = pd.json_normalize(records)
-    for col in df.columns:
-        if df[col].map(lambda v: isinstance(v, (list, dict))).any():
-            df[col] = df[col].map(
-                lambda v: json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v
-            )
-    return df
-
-
 def completeness_report(df: pd.DataFrame, entity: str) -> dict[str, float]:
-    """% εγγραφών με ΑΔΑΜ, ημερομηνία, ποσό (τα κριτήρια του Checkpoint 0)."""
-    n = len(df)
-    if n == 0:
-        return {"records": 0}
-
-    def pct(mask: pd.Series) -> float:
-        return round(100.0 * mask.sum() / n, 2)
-
-    has_adam = df["referenceNumber"].notna() & (df["referenceNumber"].astype(str).str.len() > 0)
-    has_date = df["submissionDate"].notna() if "submissionDate" in df.columns else pd.Series(False, index=df.index)
-    amount_cols = [c for c in ("totalCostWithVAT", "totalCostWithoutVAT", "budget") if c in df.columns]
-    has_amount = pd.Series(False, index=df.index)
-    for col in amount_cols:
-        has_amount |= pd.to_numeric(df[col], errors="coerce").notna()
-
-    report = {
-        "records": n,
-        "pct_adam": pct(has_adam),
-        "pct_date": pct(has_date),
-        "pct_amount": pct(has_amount),
-    }
-    if "organizationVatNumber" in df.columns:
-        report["pct_org_vat"] = pct(df["organizationVatNumber"].notna())
+    """Wrapper πάνω στο κοινό kimdis_data.completeness_report -- προσθέτει το
+    logging του Checkpoint 0 (η κοινή συνάρτηση δεν κάνει log)."""
+    report = _completeness_report(df, entity)
     logger.info("%s: %s", entity, report)
     return report
 

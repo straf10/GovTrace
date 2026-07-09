@@ -8,17 +8,86 @@ build_site_data.py και build_foreas_data.py ώστε η λογική φόρτ
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
 
+logger = logging.getLogger(__name__)
+
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
 
 _VAT_RE = re.compile(r"\D")
 _VALID_VAT_RE = re.compile(r"\d{9}")
+
+INT64_MAX = 2**63 - 1
+INT64_MIN = -(2**63)
+
+
+def flatten(records: list[dict]) -> pd.DataFrame:
+    """json_normalize στο πρώτο επίπεδο· εναπομείναντα nested list/dict σε JSON strings.
+
+    Ακραίες τιμές int εκτός int64 (παρατηρήθηκε π.χ. contractDuration=8e19 στο
+    auction_2025_04 -- σαφώς κατεστραμμένη τιμή πηγής) γίνονται None αντί να
+    σκάει το pyarrow στο to_parquet.
+
+    B5 (tech_report v2): ενοποιημένο εδώ αντί να ζει διπλότυπο σε
+    backfill_historical.py/fetch_month.py -- το session-12 overflow guard είχε
+    μπει μόνο στο ένα αντίγραφο και το άλλο έσκαγε με OverflowError.
+    """
+    df = pd.json_normalize(records)
+    for col in df.columns:
+        if df[col].map(lambda v: isinstance(v, (list, dict))).any():
+            df[col] = df[col].map(
+                lambda v: json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v
+            )
+        elif df[col].map(lambda v: isinstance(v, int) and not isinstance(v, bool)).any():
+            oversized = df[col].map(
+                lambda v: isinstance(v, int) and not isinstance(v, bool) and not (INT64_MIN <= v <= INT64_MAX)
+            )
+            if oversized.any():
+                logger.warning(
+                    "flatten: %d ακραίες τιμές εκτός int64 στη στήλη %r -- μηδενίζονται",
+                    oversized.sum(), col,
+                )
+                df.loc[oversized, col] = None
+    return df
+
+
+def completeness_report(df: pd.DataFrame, entity: str) -> dict[str, float]:
+    """% εγγραφών με ΑΔΑΜ, ημερομηνία, ποσό."""
+    n = len(df)
+    if n == 0:
+        return {"records": 0}
+
+    def pct(mask: pd.Series) -> float:
+        return round(100.0 * mask.sum() / n, 2)
+
+    has_adam = df["referenceNumber"].notna() & (df["referenceNumber"].astype(str).str.len() > 0)
+    has_date = df["submissionDate"].notna() if "submissionDate" in df.columns else pd.Series(False, index=df.index)
+    amount_cols = [c for c in ("totalCostWithVAT", "totalCostWithoutVAT", "budget") if c in df.columns]
+    has_amount = pd.Series(False, index=df.index)
+    for col in amount_cols:
+        has_amount |= pd.to_numeric(df[col], errors="coerce").notna()
+
+    report = {
+        "records": n,
+        "pct_adam": pct(has_adam),
+        "pct_date": pct(has_date),
+        "pct_amount": pct(has_amount),
+    }
+    if "organizationVatNumber" in df.columns:
+        vat = df["organizationVatNumber"]
+        report["pct_org_vat"] = pct(vat.notna())
+        # B3: format-valid (9ψήφιο) ΑΦΜ έναντι mod-11 checksum-valid -- η
+        # απόσταση των δύο ποσοστών δείχνει πόσο "σκουπίδι" περνάει τη μορφή
+        # αλλά όχι το checksum.
+        report["pct_org_vat_checksum"] = pct(vat.map(is_valid_vat_checksum))
+    return report
 
 
 def load_entity(entity: str, raw_dir: Path = RAW_DIR, columns: list[str] | None = None) -> pd.DataFrame:
@@ -88,6 +157,23 @@ def normalize_vat(value: object) -> str | None:
     if _VALID_VAT_RE.fullmatch(digits) and digits != "000000000":
         return digits
     return None
+
+
+def is_valid_vat_checksum(vat: str) -> bool:
+    """Έλεγχος mod-11 του ελληνικού ΑΦΜ (απόφαση #7, B3 στο tech_report v2).
+
+    Αλγόριθμος: για τα πρώτα 8 ψηφία d[0..7] (από αριστερά), βάρος 2^(8-i)·
+    ψηφίο ελέγχου = (Σ d[i]·2^(8-i) mod 11) mod 10, συγκρίνεται με το ένατο
+    ψηφίο. Δεν καλείται από ``normalize_vat`` -- το checksum μετράει
+    **δημοσιεύσιμη εγκυρότητα** (βλ. ``completeness_report``), δεν φιλτράρει
+    το keying/entity-resolution, όπου format-valid 9ψήφια (π.χ. ΑΦΜ φορέων
+    με ιστορικά μη τυπικές τιμές) πρέπει να παραμένουν χρησιμοποιήσιμα.
+    """
+    if not isinstance(vat, str) or not _VALID_VAT_RE.fullmatch(vat):
+        return False
+    digits = [int(c) for c in vat]
+    total = sum(d * (2 ** (8 - i)) for i, d in enumerate(digits[:8]))
+    return (total % 11) % 10 == digits[8]
 
 
 NAME_COL = "organization.value"

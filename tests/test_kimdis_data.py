@@ -1,6 +1,6 @@
 import pandas as pd
 
-from kimdis_data import build_vat_resolver, load_entity, normalize_vat, resolve_vat
+from kimdis_data import build_vat_resolver, is_valid_vat_checksum, load_entity, normalize_vat, resolve_vat
 
 
 def test_normalize_vat_valid_nine_digits():
@@ -32,6 +32,21 @@ def test_normalize_vat_rejects_non_string():
 def test_normalize_vat_rejects_garbage():
     assert normalize_vat("abc") is None
     assert normalize_vat("12") is None
+
+
+def test_is_valid_vat_checksum_accepts_known_valid_vat():
+    assert is_valid_vat_checksum("090016590") is True
+    assert is_valid_vat_checksum("090153025") is True
+
+
+def test_is_valid_vat_checksum_rejects_bad_check_digit():
+    assert is_valid_vat_checksum("111111112") is False
+
+
+def test_is_valid_vat_checksum_rejects_malformed_input():
+    assert is_valid_vat_checksum("abc") is False
+    assert is_valid_vat_checksum("12345") is False
+    assert is_valid_vat_checksum(None) is False
 
 
 def test_build_vat_resolver_keeps_dominant_vat_above_threshold():
