@@ -82,6 +82,7 @@ header.site-header .inner {
 /* Disclaimer strip */
 .disclaimer-strip {
   background: var(--accent-soft);
+  color: #1e293b;
   border-bottom: 1px solid var(--border);
   font-size: 0.85rem;
 }
@@ -174,6 +175,7 @@ h1 { margin-bottom: 0.25rem; }
   border-left: 4px solid var(--accent);
   padding: 1rem 1.25rem;
   background: var(--accent-soft);
+  color: #1e293b;
   border-radius: 4px;
   margin-block: 2rem;
 }
@@ -264,9 +266,12 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 
 td.above-median::after { content: " \25b2"; font-size: 0.75em; color: var(--muted); }
 
-td.intensity-1 { background: color-mix(in srgb, var(--blue-1) 55%, transparent); }
-td.intensity-2 { background: color-mix(in srgb, var(--blue-2) 45%, transparent); }
-td.intensity-3 { background: color-mix(in srgb, var(--blue-3) 30%, transparent); }
+/* Μείξη με λευκό (όχι transparent): σταθερό ανοιχτό-μπλε heatmap ανεξάρτητα
+   από light/dark mode -- αλλιώς το χρώμα "βάφεται" από το φόντο σελίδας
+   (Canvas), και σε dark mode το λευκό κείμενο (CanvasText) γίνεται αόρατο. */
+td.intensity-1 { background: color-mix(in srgb, var(--blue-1) 55%, white); color: #1e293b; }
+td.intensity-2 { background: color-mix(in srgb, var(--blue-2) 45%, white); color: #1e293b; }
+td.intensity-3 { background: color-mix(in srgb, var(--blue-3) 30%, white); color: #1e293b; }
 
 .badge-missing {
   display: inline-block;
@@ -291,7 +296,7 @@ td.intensity-3 { background: color-mix(in srgb, var(--blue-3) 30%, transparent);
 .doc-content h2 { margin-top: 2rem; }
 .doc-content table { font-size: 0.9rem; margin-block: 1rem; }
 .doc-content th, .doc-content td { text-align: left; }
-.doc-content code { background: var(--accent-soft); padding: 0.1rem 0.3rem; border-radius: 3px; }
+.doc-content code { background: var(--accent-soft); color: #1e293b; padding: 0.1rem 0.3rem; border-radius: 3px; }
 
 /* Empty state */
 .empty-state {

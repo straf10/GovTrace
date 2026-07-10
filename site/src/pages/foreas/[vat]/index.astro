@@ -160,7 +160,7 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
       <IndicatorCard
         title="% Απευθείας ανάθεση"
         info="Μερίδιο αναθέσεων με τη διαδικασία «Απευθείας ανάθεση» σε πλήθος. Μικροί φορείς με λίγες προμήθειες έχουν φυσιολογικά υψηλό ποσοστό — δείτε πάντα το N."
-        defLink="/deiktes/direct-award/"
+        defLink="/methodologia/#41-ποσοστό-απευθείας-αναθέσεων"
         latestValue={da.latest?.value ?? null}
         latestYear={latestYear}
         latestN={da.latest?.n ?? null}
@@ -173,7 +173,7 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
       <IndicatorCard
         title="Συγκέντρωση αναδόχων (HHI)"
         info="Πόσο συγκεντρωμένη είναι η δαπάνη σε λίγους αναδόχους (0–1). Απαιτείται ελάχιστο N≥10 συμβάσεων."
-        defLink="/deiktes/hhi/"
+        defLink="/methodologia/#42-συγκέντρωση-αναδόχων-hhi--top-1-μερίδιο"
         latestValue={hhi.latest?.value ?? null}
         latestYear={latestYear}
         latestN={hhi.latest?.n ?? null}
@@ -186,7 +186,7 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
       <IndicatorCard
         title="Διάμεση έκπτωση"
         info="Διαφορά εκτιμώμενης προς τελική αξία ανάθεσης. Συστηματικά ~0% έκπτωση σε ανταγωνιστικές διαδικασίες είναι καθιερωμένο red flag."
-        defLink="/deiktes/discount-rate/"
+        defLink="/methodologia/#46-ποσοστό-έκπτωσης-προκήρυξης--σύμβασης"
         latestValue={discount.latest?.value ?? null}
         latestYear={latestYear}
         latestN={discount.latest?.n ?? null}
