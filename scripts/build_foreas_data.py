@@ -120,7 +120,15 @@ def percentile_of(value: float, values: pd.Series) -> float | None:
     return round(100.0 * float((vals <= value).mean()), 1)
 
 
-def build_groups_distributions_percentiles(entities: pd.DataFrame, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.DataFrame, dl: pd.DataFrame):
+def build_groups_distributions_percentiles(
+    entities: pd.DataFrame,
+    da: pd.DataFrame,
+    hhi: pd.DataFrame,
+    sb: pd.DataFrame,
+    dr: pd.DataFrame,
+    dl: pd.DataFrame,
+    comp: pd.DataFrame,
+):
     group_of = assign_groups(entities, da)
 
     distributions: dict[str, dict] = {}
@@ -129,8 +137,10 @@ def build_groups_distributions_percentiles(entities: pd.DataFrame, da: pd.DataFr
     specs = [
         ("da", da, "organization_vat", "da_count_pct"),
         ("hhi", hhi, "organization_vat", "hhi"),
+        ("single_bid", sb, "organization_vat", "single_bid_pct"),
         ("discount", dr, "organization_vat", "median_discount_pct"),
         ("deadline", dl, "vat", "median_deadline_days"),
+        ("composite", comp, "vat", "composite_score"),
     ]
     for key, df, vat_col, value_col in specs:
         if df.empty or value_col not in df.columns:
@@ -294,11 +304,24 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
     return pages
 
 
-def attach_indicators(pages: dict, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.DataFrame, dl: pd.DataFrame, percentiles: dict, group_of: pd.Series, entities: pd.DataFrame) -> None:
+def attach_indicators(
+    pages: dict,
+    da: pd.DataFrame,
+    hhi: pd.DataFrame,
+    sb: pd.DataFrame,
+    dr: pd.DataFrame,
+    dl: pd.DataFrame,
+    comp: pd.DataFrame,
+    percentiles: dict,
+    group_of: pd.Series,
+    entities: pd.DataFrame,
+) -> None:
     da_by_vat = {vat: g for vat, g in da.groupby("organization_vat")} if not da.empty else {}
     hhi_by_vat = {vat: g for vat, g in hhi.groupby("organization_vat")} if not hhi.empty else {}
+    sb_by_vat = {vat: g for vat, g in sb.groupby("organization_vat")} if not sb.empty else {}
     dr_by_vat = {vat: g for vat, g in dr.groupby("organization_vat")} if not dr.empty else {}
     dl_by_vat = {vat: g for vat, g in dl.groupby("vat")} if not dl.empty else {}
+    comp_by_vat = {vat: g for vat, g in comp.groupby("vat")} if not comp.empty else {}
     ent_by_vat = entities.set_index("vat") if not entities.empty else pd.DataFrame()
 
     for vat, page in pages.items():
@@ -319,6 +342,17 @@ def attach_indicators(pages: dict, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.D
             indicators["hhi"] = {
                 str(int(r["year"])): {"value": r["hhi"], "n": int(r["n_contracts"]), "top1_share": r["top1_share"]}
                 for _, r in hhi_by_vat[vat].iterrows()
+            }
+        if vat in sb_by_vat:
+            indicators["single_bid"] = {
+                str(int(r["year"])): {
+                    "value": r["single_bid_pct"],
+                    "n": int(r["n_with_bids"]),
+                    "coverage_pct": r["coverage_pct"],
+                    "n_bids_outliers": int(r["n_bids_outliers"]),
+                    "insufficient_data": pd.isna(r["single_bid_pct"]),
+                }
+                for _, r in sb_by_vat[vat].iterrows()
             }
         if vat in dr_by_vat:
             def dr_row(r):
@@ -345,6 +379,11 @@ def attach_indicators(pages: dict, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.D
                     "insufficient_data": pd.isna(r["median_deadline_days"]),
                 }
                 for _, r in dl_by_vat[vat].iterrows()
+            }
+        if vat in comp_by_vat:
+            indicators["composite"] = {
+                str(int(r["year"])): {"value": r["composite_score"], "n": int(r["n_flags"])}
+                for _, r in comp_by_vat[vat].iterrows()
             }
 
         page["indicators"] = indicators
@@ -382,15 +421,17 @@ def main() -> None:
     entities = read_csv_or_empty("entities.csv")
     da = read_csv_or_empty("indicator_direct_award.csv")
     hhi = read_csv_or_empty("indicator_hhi.csv")
+    sb = read_csv_or_empty("indicator_single_bid.csv")
     dr = read_csv_or_empty("indicator_discount_rate.csv")
     dl = read_csv_or_empty("indicator_deadlines.csv")
+    comp = read_csv_or_empty("indicator_composite.csv")
 
     if da.empty or entities.empty:
         print("Λείπουν data/processed/entities.csv ή indicator_direct_award.csv -- τρέξε πρώτα "
               "build_entity_table.py και compute_indicators_v1.py.")
         return
 
-    group_of, distributions, percentiles = build_groups_distributions_percentiles(entities, da, hhi, dr, dl)
+    group_of, distributions, percentiles = build_groups_distributions_percentiles(entities, da, hhi, sb, dr, dl, comp)
 
     # _source_year προστίθεται αυτόματα από load_entity· περνάμε μόνο τις
     # ουσιαστικές στήλες για column pruning (ταχύτητα σε ολόκληρο το ιστορικό).
@@ -409,7 +450,7 @@ def main() -> None:
               "Χτίζεται προσωρινός resolver μόνο από auctions -- λιγότερο πλήρης.)")
         resolver = build_vat_resolver([auctions])
     pages = build_foreas_facts(auctions, resolver)
-    attach_indicators(pages, da, hhi, dr, dl, percentiles, group_of, entities)
+    attach_indicators(pages, da, hhi, sb, dr, dl, comp, percentiles, group_of, entities)
 
     pages = sanitize(pages)
     distributions = sanitize(distributions)

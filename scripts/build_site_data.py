@@ -26,8 +26,10 @@ PUBLISHED_CSVS = [
     "entities.csv",
     "indicator_direct_award.csv",
     "indicator_hhi.csv",
+    "indicator_single_bid.csv",
     "indicator_discount_rate.csv",
     "indicator_deadlines.csv",
+    "indicator_composite.csv",
 ]
 
 
@@ -42,8 +44,10 @@ def merge_indicators() -> list[dict]:
     entities = read_csv_or_empty("entities.csv")
     da = read_csv_or_empty("indicator_direct_award.csv")
     hhi = read_csv_or_empty("indicator_hhi.csv")
+    sb = read_csv_or_empty("indicator_single_bid.csv")
     dr = read_csv_or_empty("indicator_discount_rate.csv")
     dl = read_csv_or_empty("indicator_deadlines.csv")
+    comp = read_csv_or_empty("indicator_composite.csv")
 
     if da.empty:
         return []
@@ -70,10 +74,24 @@ def merge_indicators() -> list[dict]:
             on=["vat", "year"],
             how="left",
         )
+    if not sb.empty:
+        merged = merged.merge(
+            sb.rename(columns={"organization_vat": "vat"})[
+                ["vat", "year", "n_with_bids", "n_single_bid", "single_bid_pct", "coverage_pct", "n_bids_outliers"]
+            ].rename(columns={"coverage_pct": "single_bid_coverage_pct"}),
+            on=["vat", "year"],
+            how="left",
+        )
     if not dl.empty:
         merged = merged.merge(
             dl[["vat", "year", "n_notices", "median_deadline_days", "pct_short_deadline", "coverage_pct"]]
             .rename(columns={"coverage_pct": "deadline_coverage_pct"}),
+            on=["vat", "year"],
+            how="left",
+        )
+    if not comp.empty:
+        merged = merged.merge(
+            comp[["vat", "year", "composite_score", "n_flags"]],
             on=["vat", "year"],
             how="left",
         )

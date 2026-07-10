@@ -6,6 +6,7 @@ notice_*) και υπολογίζει:
   - §4.2 HHI, top1: συγκέντρωση αναδόχων στις συμβάσεις (ελάχιστο N=10)
   - §4.5 bid-splitting: density ratio αναθέσεων γύρω από το νόμιμο όριο
     απευθείας ανάθεσης (ελάχιστο N=5 σε κάθε ζώνη)
+  - §4.3 single-bid rate: ποσοστό ανταγωνιστικών συμβάσεων με μία μόνο προσφορά
   - §4.6 discount rate: ποσοστό διαδικασιών με ~0% έκπτωση προκήρυξη→ανάθεση,
     μέσω σύνδεσης notice.referenceNumber <-> auction.noticeRefNo (η σύνδεση
     notice<->contract είναι σχεδόν κενή στα δεδομένα, βλ. σημείωση #4.6 πιο
@@ -47,6 +48,9 @@ MIN_N_DISCOUNT = 5  # METHODOLOGY §4.6
 MIN_N_DEADLINE = 5  # METHODOLOGY §4.7 δεν ορίζει ρητά ελάχιστο N -- χρησιμοποιείται
                      # το ίδιο κατώφλι με §4.5/§4.6 (απόφαση session 18, καταγεγραμμένη
                      # ρητά εδώ όπως ζητήθηκε).
+MIN_N_SINGLE_BID = 5  # METHODOLOGY §4.3 -- ίδιο κατώφλι δημοσίευσης με §4.5/§4.6/§4.7
+SINGLE_BID_CUTOVER = (2025, 4)  # Πρώτος πλήρης μήνας με bidsSubmitted· 2020..2025-03 είναι κενό/μερικό.
+BIDS_SUBMITTED_MAX = 100  # Τιμές έως 335.315+ έχουν καταγραφεί ως garbage source values.
 
 # P1 (audit): column pruning -- χωρίς αυτό φορτώνονται και οι ~53-65 στήλες
 # (μαζί με ογκώδη nested JSON-string πεδία) όλης της ιστορίας σε pandas.
@@ -55,7 +59,8 @@ AUCTION_COLS = [
     "contractType.value", "submissionDate", "noticeRefNo",
 ]
 CONTRACT_COLS = [
-    NAME_COL, VAT_COL, "totalCostWithVAT", "totalCostWithoutVAT",
+    NAME_COL, VAT_COL, "procedureType.key", "procedureType.value", "bidsSubmitted",
+    "contract.bidsSubmitted", "totalCostWithVAT", "totalCostWithoutVAT", "submissionDate",
     "contractingDataDetails.contractingMembersDataList",
 ]
 NOTICE_COLS = [
@@ -88,11 +93,29 @@ WORKS_STUDIES_TYPES = {"Έργα", "Μελέτες", "Τεχνικές ή λοι
 # απαιτεί νομική επιβεβαίωση -- ίδιο status με το bid-splitting (§4.5).
 # Δημοσιεύεται εδώ μόνο η αδιαμφισβήτητη διάμεση προθεσμία (ημέρες).
 #
-# typeOfProcedure.key == "6" (Απευθείας ανάθεση) αποκλείεται: είναι ~84% των
-# notice εγγραφών, και το ζεύγος submissionDate/finalSubmissionDate εκεί δεν
-# αντιστοιχεί σε πραγματική ανταγωνιστική περίοδο υποβολής προσφορών (σχεδόν
-# ταυτόχρονες τιμές) -- θα κυριαρχούσε αλλοιώνοντας τη διάμεσο προς τα κάτω.
+# Εξαιρέσεις μη-ανταγωνιστικών/ειδικών διαδικασιών για §4.7 και §4.3:
+# - key=="6": Απευθείας ανάθεση (υφιστάμενη επιβεβαιωμένη εξαίρεση).
+# - key=="12" / value "Διαπραγμάτευση χωρίς προηγούμενη δημοσίευση...":
+#   άρθρο 32 ν.4412/2016, επιβεβαιωμένο από εγκύκλιο ΓΓ Εμπορίου 99864/2025.
+# - key=="18" / value "Διαδικασία άρθρου 128 του ν.4412/16": πιθανό ότι δεν
+#   έχει ενιαίο χρονοδιάγραμμα ανταγωνιστικής υποβολής, βλ.
+#   docs/research/bid_splitting_and_deadlines_research.md.
+# Αυτές δεν μετέχουν στη δημοσιευμένη median_deadline_days ώστε να μην
+# αλλοιώνουν τη διάμεσο προς τα κάτω. Το pct_short_deadline παραμένει ανενεργό.
 NOTICE_DIRECT_AWARD_KEY = "6"
+NON_COMPETITIVE_PROCEDURE_KEYS = {NOTICE_DIRECT_AWARD_KEY, "12", "18"}
+NON_COMPETITIVE_PROCEDURE_VALUES = {
+    "Διαπραγμάτευση χωρίς προηγούμενη δημοσίευση",
+    "Διαπραγμάτευση χωρίς προηγούμενη δημοσίευση (αρ.32/αρ.269)",
+    "Διαδικασία άρθρου 128 του ν.4412/16",
+}
+
+
+def is_competitive_procedure(df: pd.DataFrame) -> pd.Series:
+    """Κοινό φίλτρο ανταγωνιστικών διαδικασιών για §4.3 και §4.7."""
+    key = df.get("typeOfProcedure.key", pd.Series([None] * len(df), index=df.index)).astype(str)
+    value = df.get("typeOfProcedure.value", pd.Series([None] * len(df), index=df.index)).astype(str).str.strip()
+    return ~key.isin(NON_COMPETITIVE_PROCEDURE_KEYS) & ~value.isin(NON_COMPETITIVE_PROCEDURE_VALUES)
 
 
 def load_entity_table() -> pd.DataFrame:
@@ -203,6 +226,77 @@ def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
                 "note": None,
             }
         )
+    return pd.DataFrame(rows).sort_values(["year", "organization_vat"])
+
+
+def single_bid_rate(contracts: pd.DataFrame) -> pd.DataFrame:
+    """§4.3 -- ποσοστό ανταγωνιστικών συμβάσεων με μία μόνο προσφορά.
+
+    Το `bidsSubmitted` είναι άδειο έως 2025-03 και πλήρες από 2025-04 στα raw
+    contract δεδομένα, άρα ο δείκτης ξεκινά ρητά από τον πρώτο πλήρη μήνα.
+    Τιμές εκτός [1, BIDS_SUBMITTED_MAX] θεωρούνται data errors και εξαιρούνται
+    από τον παρονομαστή, με δημοσιευμένο μετρητή outliers.
+    """
+    if contracts.empty:
+        return pd.DataFrame()
+
+    df = contracts.copy()
+    after_cutover = (
+        (df["_source_year"] > SINGLE_BID_CUTOVER[0])
+        | ((df["_source_year"] == SINGLE_BID_CUTOVER[0]) & (df["_source_month"] >= SINGLE_BID_CUTOVER[1]))
+    )
+    df = df[after_cutover & is_competitive_procedure(df)].copy()
+    df = df.dropna(subset=["vat_norm"])
+    if df.empty:
+        return pd.DataFrame()
+
+    raw_bids = pd.to_numeric(df.get("bidsSubmitted"), errors="coerce")
+    fallback = pd.to_numeric(df.get("contract.bidsSubmitted"), errors="coerce")
+    df["bids_submitted"] = raw_bids.fillna(fallback)
+    df["bids_outlier"] = (df["bids_submitted"] < 1) | (df["bids_submitted"] > BIDS_SUBMITTED_MAX)
+    df["bids_valid"] = df["bids_submitted"].notna() & ~df["bids_outlier"]
+
+    rows = []
+    for (vat, year), g in df.groupby(["vat_norm", "_source_year"]):
+        name = mode_name(g["organization.value"])
+        valid = g.loc[g["bids_valid"]]
+        n_competitive = len(g)
+        n_valid = len(valid)
+        n_single_bid = int((valid["bids_submitted"] == 1).sum())
+        n_bids_outliers = int(g["bids_outlier"].fillna(False).sum())
+        coverage_pct = round(100.0 * n_valid / n_competitive, 1) if n_competitive else None
+        if n_valid < MIN_N_SINGLE_BID:
+            rows.append(
+                {
+                    "organization_vat": vat,
+                    "organization_name": name,
+                    "year": year,
+                    "n_competitive": n_competitive,
+                    "n_with_bids": n_valid,
+                    "n_single_bid": n_single_bid,
+                    "single_bid_pct": None,
+                    "coverage_pct": coverage_pct,
+                    "n_bids_outliers": n_bids_outliers,
+                    "note": f"ανεπαρκή δεδομένα (N<{MIN_N_SINGLE_BID})",
+                }
+            )
+            continue
+        rows.append(
+            {
+                "organization_vat": vat,
+                "organization_name": name,
+                "year": year,
+                "n_competitive": n_competitive,
+                "n_with_bids": n_valid,
+                "n_single_bid": n_single_bid,
+                "single_bid_pct": round(100.0 * n_single_bid / n_valid, 2),
+                "coverage_pct": coverage_pct,
+                "n_bids_outliers": n_bids_outliers,
+                "note": None,
+            }
+        )
+    if not rows:
+        return pd.DataFrame()
     return pd.DataFrame(rows).sort_values(["year", "organization_vat"])
 
 
@@ -359,7 +453,7 @@ def deadline_indicator(notices: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = notices.copy()
-    df = df[df["typeOfProcedure.key"].astype(str) != NOTICE_DIRECT_AWARD_KEY]
+    df = df[is_competitive_procedure(df)]
     df = df.dropna(subset=["vat_norm"])
 
     n_competitive = df.groupby(["vat_norm", "_source_year"]).size()
@@ -405,6 +499,100 @@ def deadline_indicator(notices: pd.DataFrame) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows).sort_values(["year", "vat"])
+
+
+def _yearly_reverse_percentile(df: pd.DataFrame, value_col: str) -> pd.Series:
+    """0..1 flag όπου χαμηλότερη τιμή σημαίνει υψηλότερο ρίσκο μέσα στο ίδιο έτος."""
+    out = pd.Series(index=df.index, dtype=float)
+    for _, g in df.groupby("year"):
+        vals = g[value_col].dropna()
+        if vals.empty:
+            continue
+        pct = vals.rank(pct=True, method="average")
+        out.loc[pct.index] = 1.0 - pct
+    return out
+
+
+def composite_indicator(
+    da: pd.DataFrame,
+    hhi: pd.DataFrame,
+    dr: pd.DataFrame,
+    dl: pd.DataFrame,
+    sb: pd.DataFrame,
+) -> pd.DataFrame:
+    """§4.8 -- μη σταθμισμένος μέσος των διαθέσιμων δημοσιευμένων flags.
+
+    Ρητά δεν περιλαμβάνει bid-splitting (§4.5) ούτε pct_short_deadline (§4.7),
+    επειδή δεν δημοσιεύονται πριν τη νομική επιβεβαίωση.
+    """
+    if da.empty:
+        return pd.DataFrame()
+
+    merged = da.rename(columns={"organization_vat": "vat", "organization_name": "name"})[
+        ["vat", "name", "year", "da_count_pct", "da_value_pct", "n_total"]
+    ].copy()
+    if not hhi.empty:
+        merged = merged.merge(
+            hhi.rename(columns={"organization_vat": "vat"})[["vat", "year", "hhi", "n_contracts"]],
+            on=["vat", "year"],
+            how="left",
+        )
+    if not dr.empty:
+        merged = merged.merge(
+            dr.rename(columns={"organization_vat": "vat"})[["vat", "year", "pct_near_zero_discount", "n_linked"]],
+            on=["vat", "year"],
+            how="left",
+        )
+    if not dl.empty:
+        deadline = dl[["vat", "year", "median_deadline_days", "n_notices"]].copy()
+        deadline["deadline_flag"] = _yearly_reverse_percentile(deadline, "median_deadline_days")
+        merged = merged.merge(deadline, on=["vat", "year"], how="left")
+    if not sb.empty:
+        merged = merged.merge(
+            sb.rename(columns={"organization_vat": "vat"})[["vat", "year", "single_bid_pct", "n_with_bids"]],
+            on=["vat", "year"],
+            how="left",
+        )
+
+    merged["flag_da_count"] = pd.to_numeric(merged["da_count_pct"], errors="coerce") / 100.0
+    merged["flag_da_value"] = pd.to_numeric(merged["da_value_pct"], errors="coerce") / 100.0
+    merged["flag_hhi"] = pd.to_numeric(merged.get("hhi"), errors="coerce")
+    merged["flag_discount"] = pd.to_numeric(merged.get("pct_near_zero_discount"), errors="coerce") / 100.0
+    merged["flag_single_bid"] = pd.to_numeric(merged.get("single_bid_pct"), errors="coerce") / 100.0
+
+    flag_cols = [
+        "flag_da_count",
+        "flag_da_value",
+        "flag_hhi",
+        "flag_discount",
+        "deadline_flag",
+        "flag_single_bid",
+    ]
+    merged["n_flags"] = merged[flag_cols].notna().sum(axis=1)
+    merged["composite_score"] = merged[flag_cols].mean(axis=1, skipna=True).round(4)
+
+    out_cols = [
+        "vat",
+        "name",
+        "year",
+        "composite_score",
+        "n_flags",
+        "flag_da_count",
+        "flag_da_value",
+        "flag_hhi",
+        "flag_discount",
+        "deadline_flag",
+        "flag_single_bid",
+        "n_total",
+        "n_contracts",
+        "n_linked",
+        "n_notices",
+        "n_with_bids",
+    ]
+    for col in out_cols:
+        if col not in merged.columns:
+            merged[col] = None
+    return merged[out_cols].sort_values(["year", "vat"])
 
 
 def main() -> None:
@@ -453,13 +641,25 @@ def main() -> None:
     national["da_count_pct"] = round(100.0 * national["n_direct"] / national["n_total"], 2)
     print(national.to_string())
 
+    hhi = pd.DataFrame()
+    sb = pd.DataFrame()
     if not contracts.empty:
         hhi = hhi_concentration(contracts)
         hhi_path = OUT_DIR / "indicator_hhi.csv"
         hhi.to_csv(hhi_path, index=False, encoding="utf-8-sig")
         print(f"\nHHI indicator -> {hhi_path} ({len(hhi)} γραμμές φορέα/έτους)")
+
+        sb = single_bid_rate(contracts)
+        if not sb.empty:
+            sb_path = OUT_DIR / "indicator_single_bid.csv"
+            sb.to_csv(sb_path, index=False, encoding="utf-8-sig")
+            print(f"\nSingle-bid indicator -> {sb_path} ({len(sb)} γραμμές φορέα/έτους, "
+                  f"cutover {SINGLE_BID_CUTOVER[0]}-{SINGLE_BID_CUTOVER[1]:02d}, "
+                  f"{int(sb['n_bids_outliers'].sum())} outlier bidsSubmitted εξαιρέθηκαν)")
+        else:
+            print("\n(Ανεπαρκή δεδομένα για single-bid -- παραλείπεται.)")
     else:
-        print("\n(Δεν βρέθηκαν δεδομένα contract -- παραλείπεται το HHI.)")
+        print("\n(Δεν βρέθηκαν δεδομένα contract -- παραλείπονται HHI και single-bid.)")
 
     bs = bid_splitting(auctions)
     if not bs.empty:
@@ -469,6 +669,7 @@ def main() -> None:
     else:
         print("\n(Ανεπαρκή δεδομένα για bid-splitting -- παραλείπεται.)")
 
+    dr = pd.DataFrame()
     if not notices.empty:
         dr = discount_rate(notices, auctions)
         if not dr.empty:
@@ -484,14 +685,16 @@ def main() -> None:
     else:
         print("\n(Δεν βρέθηκαν δεδομένα notice -- παραλείπεται το discount-rate.)")
 
+    dl = pd.DataFrame()
     if not notices.empty:
         dl = deadline_indicator(notices)
         if not dl.empty:
             dl_path = OUT_DIR / "indicator_deadlines.csv"
             dl.to_csv(dl_path, index=False, encoding="utf-8-sig")
-            n_excluded_direct = int((notices["typeOfProcedure.key"].astype(str) == NOTICE_DIRECT_AWARD_KEY).sum())
-            n_competitive_total = len(notices) - n_excluded_direct
-            competitive = notices[notices["typeOfProcedure.key"].astype(str) != NOTICE_DIRECT_AWARD_KEY]
+            competitive_mask = is_competitive_procedure(notices)
+            n_excluded_non_competitive = int((~competitive_mask).sum())
+            n_competitive_total = int(competitive_mask.sum())
+            competitive = notices[competitive_mask]
             sub = pd.to_datetime(competitive["submissionDate"], errors="coerce").dt.normalize()
             fin = pd.to_datetime(competitive["finalSubmissionDate"], errors="coerce").dt.normalize()
             diff_days = (fin - sub).dt.days
@@ -499,12 +702,19 @@ def main() -> None:
             n_nat = int(diff_days.isna().sum())
             print(f"\nDeadline indicator -> {dl_path} ({len(dl)} γραμμές φορέα/έτους, "
                   f"{n_competitive_total} ανταγωνιστικές διαδικασίες από {len(notices)} notices "
-                  f"[{n_excluded_direct} απευθείας αναθέσεις αποκλείστηκαν], "
+                  f"[{n_excluded_non_competitive} μη-ανταγωνιστικές/ειδικές διαδικασίες αποκλείστηκαν], "
                   f"{n_negative} αρνητικές διάρκειες + {n_nat} άκυρες ημερομηνίες αποκλείστηκαν)")
         else:
             print("\n(Ανεπαρκή δεδομένα για deadline indicator -- παραλείπεται.)")
     else:
         print("\n(Δεν βρέθηκαν δεδομένα notice -- παραλείπεται το deadline indicator.)")
+
+    comp = composite_indicator(da, hhi, dr, dl, sb)
+    if not comp.empty:
+        comp_path = OUT_DIR / "indicator_composite.csv"
+        comp.to_csv(comp_path, index=False, encoding="utf-8-sig")
+        print(f"\nComposite indicator -> {comp_path} ({len(comp)} γραμμές φορέα/έτους, "
+              "χωρίς bid-splitting/pct_short_deadline)")
 
 
 if __name__ == "__main__":
