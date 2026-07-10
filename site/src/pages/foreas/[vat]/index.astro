@@ -51,7 +51,7 @@ for (const row of stackedRows) {
 }
 const stackedSvg = stackedValueSvg(stackedRows);
 
-function indicatorInput(key: "da" | "hhi" | "discount") {
+function indicatorInput(key: "da" | "hhi" | "discount" | "deadline") {
   const series = page.indicators?.[key] ?? {};
   const points = years.map((y) => {
     const entry = series[String(y)];
@@ -69,9 +69,10 @@ function indicatorInput(key: "da" | "hhi" | "discount") {
 const da = indicatorInput("da");
 const hhi = indicatorInput("hhi");
 const discount = indicatorInput("discount");
+const deadline = indicatorInput("deadline");
 
 const mailtoSubject = encodeURIComponent(`[ΔΙΟΡΘΩΣΗ] ${page.name ?? vat}`);
-const mailto = `mailto:115450409+straf10@users.noreply.github.com?subject=${mailtoSubject}`;
+const mailto = `mailto:ellada30@proton.me?subject=${mailtoSubject}`;
 
 // S3 (audit): validate ADAM format before building the URL -- ο ΑΔΑΜ μπαίνει
 // σε href attribute χωρίς αυτόν τον έλεγχο θα μπορούσε ένα μη τυπικό string
@@ -197,6 +198,21 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
         insufficientData={discount.latest?.insufficient_coverage ?? true}
         coverageNote={discount.latest ? `Κάλυψη σύνδεσης προκήρυξης↔ανάθεσης: ${discount.latest.coverage_pct ?? "—"}%` : null}
         caveat="Proxy μέσω τιμής κατακύρωσης λόγω περιορισμένης σύνδεσης notice↔contract στα δεδομένα ΚΗΜΔΗΣ."
+      />
+      <IndicatorCard
+        title="Διάμεση προθεσμία υποβολής"
+        info="Ημέρες από τη δημοσίευση της προκήρυξης έως την καταληκτική ημερομηνία υποβολής προσφορών, σε ανταγωνιστικές διαδικασίες (οι απευθείας αναθέσεις εξαιρούνται)."
+        defLink="/methodologia/#47-σύντομες-προθεσμίες-υποβολής"
+        latestValue={deadline.latest?.value ?? null}
+        latestYear={latestYear}
+        latestN={deadline.latest?.n ?? null}
+        valueFormat="days"
+        points={deadline.points}
+        hist={deadline.hist}
+        percentile={deadline.percentile}
+        insufficientData={deadline.latest?.insufficient_data ?? true}
+        coverageNote={deadline.latest ? `Κάλυψη έγκυρων ημερομηνιών: ${deadline.latest.coverage_pct ?? "—"}%` : null}
+        caveat="Το ποσοστό διαδικασιών με «σύντομη» προθεσμία δεν δημοσιεύεται ακόμα -- εκκρεμεί νομική επιβεβαίωση ελάχιστων ορίων ανά τύπο διαδικασίας."
       />
     </div>
   </section>

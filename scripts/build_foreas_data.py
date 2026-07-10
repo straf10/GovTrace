@@ -120,7 +120,7 @@ def percentile_of(value: float, values: pd.Series) -> float | None:
     return round(100.0 * float((vals <= value).mean()), 1)
 
 
-def build_groups_distributions_percentiles(entities: pd.DataFrame, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.DataFrame):
+def build_groups_distributions_percentiles(entities: pd.DataFrame, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.DataFrame, dl: pd.DataFrame):
     group_of = assign_groups(entities, da)
 
     distributions: dict[str, dict] = {}
@@ -130,6 +130,7 @@ def build_groups_distributions_percentiles(entities: pd.DataFrame, da: pd.DataFr
         ("da", da, "organization_vat", "da_count_pct"),
         ("hhi", hhi, "organization_vat", "hhi"),
         ("discount", dr, "organization_vat", "median_discount_pct"),
+        ("deadline", dl, "vat", "median_deadline_days"),
     ]
     for key, df, vat_col, value_col in specs:
         if df.empty or value_col not in df.columns:
@@ -293,10 +294,11 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
     return pages
 
 
-def attach_indicators(pages: dict, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.DataFrame, percentiles: dict, group_of: pd.Series, entities: pd.DataFrame) -> None:
+def attach_indicators(pages: dict, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.DataFrame, dl: pd.DataFrame, percentiles: dict, group_of: pd.Series, entities: pd.DataFrame) -> None:
     da_by_vat = {vat: g for vat, g in da.groupby("organization_vat")} if not da.empty else {}
     hhi_by_vat = {vat: g for vat, g in hhi.groupby("organization_vat")} if not hhi.empty else {}
     dr_by_vat = {vat: g for vat, g in dr.groupby("organization_vat")} if not dr.empty else {}
+    dl_by_vat = {vat: g for vat, g in dl.groupby("vat")} if not dl.empty else {}
     ent_by_vat = entities.set_index("vat") if not entities.empty else pd.DataFrame()
 
     for vat, page in pages.items():
@@ -334,6 +336,16 @@ def attach_indicators(pages: dict, da: pd.DataFrame, hhi: pd.DataFrame, dr: pd.D
                     "insufficient_coverage": coverage is None or coverage < 20.0,
                 }
             indicators["discount"] = {str(int(r["year"])): dr_row(r) for _, r in dr_by_vat[vat].iterrows()}
+        if vat in dl_by_vat:
+            indicators["deadline"] = {
+                str(int(r["year"])): {
+                    "value": r["median_deadline_days"],
+                    "n": int(r["n_notices"]),
+                    "coverage_pct": r["coverage_pct"],
+                    "insufficient_data": pd.isna(r["median_deadline_days"]),
+                }
+                for _, r in dl_by_vat[vat].iterrows()
+            }
 
         page["indicators"] = indicators
         page["percentiles"] = percentiles.get(vat, {})
@@ -371,13 +383,14 @@ def main() -> None:
     da = read_csv_or_empty("indicator_direct_award.csv")
     hhi = read_csv_or_empty("indicator_hhi.csv")
     dr = read_csv_or_empty("indicator_discount_rate.csv")
+    dl = read_csv_or_empty("indicator_deadlines.csv")
 
     if da.empty or entities.empty:
         print("Λείπουν data/processed/entities.csv ή indicator_direct_award.csv -- τρέξε πρώτα "
               "build_entity_table.py και compute_indicators_v1.py.")
         return
 
-    group_of, distributions, percentiles = build_groups_distributions_percentiles(entities, da, hhi, dr)
+    group_of, distributions, percentiles = build_groups_distributions_percentiles(entities, da, hhi, dr, dl)
 
     # _source_year προστίθεται αυτόματα από load_entity· περνάμε μόνο τις
     # ουσιαστικές στήλες για column pruning (ταχύτητα σε ολόκληρο το ιστορικό).
@@ -396,7 +409,7 @@ def main() -> None:
               "Χτίζεται προσωρινός resolver μόνο από auctions -- λιγότερο πλήρης.)")
         resolver = build_vat_resolver([auctions])
     pages = build_foreas_facts(auctions, resolver)
-    attach_indicators(pages, da, hhi, dr, percentiles, group_of, entities)
+    attach_indicators(pages, da, hhi, dr, dl, percentiles, group_of, entities)
 
     pages = sanitize(pages)
     distributions = sanitize(distributions)

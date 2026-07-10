@@ -8,7 +8,7 @@ interface Props {
   latestValue: number | null;
   latestYear: number | null;
   latestN: number | null;
-  valueFormat?: "pct" | "hhi" | "raw";
+  valueFormat?: "pct" | "hhi" | "raw" | "days";
   points: YearPoint[];
   hist: Histogram | null;
   percentile: number | null;
@@ -37,6 +37,7 @@ function fmt(v: number | null): string {
   if (v === null || v === undefined) return "—";
   if (valueFormat === "pct") return `${v.toFixed(1)}%`;
   if (valueFormat === "hhi") return v.toFixed(3);
+  if (valueFormat === "days") return `${v.toFixed(0)} ημέρες`;
   return String(v);
 }
 

@@ -35,6 +35,7 @@ def merge_indicators() -> list[dict]:
     da = read_csv_or_empty("indicator_direct_award.csv")
     hhi = read_csv_or_empty("indicator_hhi.csv")
     dr = read_csv_or_empty("indicator_discount_rate.csv")
+    dl = read_csv_or_empty("indicator_deadlines.csv")
 
     if da.empty:
         return []
@@ -58,6 +59,13 @@ def merge_indicators() -> list[dict]:
             dr.rename(columns={"organization_vat": "vat"})[
                 ["vat", "year", "n_linked", "median_discount_pct", "pct_near_zero_discount"]
             ],
+            on=["vat", "year"],
+            how="left",
+        )
+    if not dl.empty:
+        merged = merged.merge(
+            dl[["vat", "year", "n_notices", "median_deadline_days", "pct_short_deadline", "coverage_pct"]]
+            .rename(columns={"coverage_pct": "deadline_coverage_pct"}),
             on=["vat", "year"],
             how="left",
         )
