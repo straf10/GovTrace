@@ -58,8 +58,10 @@ tests/                       # pytest suite (29 tests)
 docs/
   METHODOLOGY.md             # Indicator definitions & methodology (+ changelog)
   DISCLAIMER.md              # Legal disclaimer & correction/right-of-reply process
-  PLAN.md                    # Roadmap & phase plan
-  UI_UX_PLAN.md              # Per-page UI/UX plan & design decisions
+  MASTERPLAN_ELLADA_3.0_2026-07.md  # Consolidated masterplan (planning entry point, incl. checkpoint definitions)
+  SPRINTS_DETAILED.md        # Week-by-week sprint breakdown
+  UI_UX_SPEC_FINAL.md        # Per-page UI/UX spec & design decisions
+  NEO4J_INTEGRATION_FINAL.md # Graph analytics strategy (Φάση 2, offline)
   RESEARCH_RESULTS.md        # ΚΗΜΔΗΣ API research & findings
   tech_report.md             # Technical audit (2026-07-09) & fix plan
   MEMORY.md                  # Per-session project log & current state
@@ -77,8 +79,9 @@ docs/
 See `docs/` folder for:
 - **METHODOLOGY.md** — risk indicator definitions (versioned changelog)
 - **DISCLAIMER.md** — legal notice, correction process & right of reply
-- **PLAN.md** — development roadmap
-- **UI_UX_PLAN.md** — site structure & UI/UX decisions
+- **MASTERPLAN_ELLADA_3.0_2026-07.md** — consolidated masterplan & checkpoint definitions (start here)
+- **SPRINTS_DETAILED.md** — week-by-week sprint breakdown
+- **UI_UX_SPEC_FINAL.md** — site structure & UI/UX decisions
 - **tech_report.md** — technical audit & fix plan
 - **MEMORY.md** — per-session project log (current state)
 

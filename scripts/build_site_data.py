@@ -1,11 +1,9 @@
-"""Static dashboard v1 σκελετός (PLAN.md Checkpoint 1β): εξάγει τα ήδη
-υπολογισμένα δεδομένα από data/processed/*.csv σε ένα ενιαίο JSON που
-διαβάζει το site/ (καθαρό HTML/CSS/JS, χωρίς build step -- static-first,
-€0, PLAN.md §1).
+"""Static dashboard v1 (Checkpoint 1β -- βλ. docs/MASTERPLAN_ELLADA_3.0_2026-07.md
+Παράρτημα Α): εξάγει τα ήδη υπολογισμένα δεδομένα από data/processed/*.csv
+σε ένα ενιαίο JSON που καταναλώνει το site/ (static-first, €0).
 
-Δεν είναι η τελική επιλογή frontend framework (Observable Framework/Next.js
-παραμένουν στο τραπέζι στο PLAN.md) -- είναι ένας ελάχιστος σκελετός για να
-υπάρχει κάτι δημοσιεύσιμο ενώ τρέχει το backfill.
+Ιστορική σημείωση: γράφτηκε για τον προ-Astro σκελετό· το frontend είναι
+πλέον Astro (απόφαση session 5), το JSON παραμένει το ίδιο interface.
 
 Χρήση:
     python scripts/build_site_data.py

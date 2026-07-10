@@ -1,4 +1,5 @@
-// Build-time inline SVG helpers (UI_UX_PLAN.md §5, Sprint B decision:
+// Build-time inline SVG helpers (πρώην UI_UX_PLAN.md §5, βλ. πλέον
+// docs/UI_UX_SPEC_FINAL.md· Sprint B decision:
 // build-time SVG αντί για Observable Plot στον client -- βλ. docs/MEMORY.md
 // session 6 για το σκεπτικό/μελλοντικό επανέλεγχο).
 //
