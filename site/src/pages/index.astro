@@ -57,11 +57,23 @@ const points = validSeries.map((p, i) => {
 const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 ---
 <Base title="Αρχική" description="Ανοιχτά δεδομένα δημοσίων συμβάσεων της Ελλάδας, με δείκτες διαφάνειας διαδικασιών.">
-  <section>
-    <h1>Ελλάδα 3.0</h1>
-    <p class="subtitle">Ανοιχτά δεδομένα δημοσίων συμβάσεων της Ελλάδας, με δείκτες διαφάνειας διαδικασιών.</p>
-    <form class="site-search" action="/foreis/" method="get" style="max-width: 32rem;">
-      <input type="search" name="q" placeholder="Βρες τον δήμο σου…" aria-label="Αναζήτηση φορέα" style="width: 100%; padding: 0.75rem 1rem; font-size: 1rem;" />
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Δημόσιες συμβάσεις · ανοιχτά δεδομένα</p>
+      <h1>Δες πώς αναθέτει κάθε δημόσιος φορέας.</h1>
+      <p class="subtitle">
+        Το Ελλάδα 3.0 συγκεντρώνει δεδομένα ΚΗΜΔΗΣ και δημοσιεύει ουδέτερους δείκτες ρίσκου διαδικασιών,
+        με τιμή, N και περίοδο για κάθε μέτρο.
+      </p>
+      <div class="hero-actions">
+        <a class="primary-button" href="/foreis/">Εξερεύνηση φορέων</a>
+        <a class="secondary-button" href="/deiktes/">Τι μετράμε</a>
+      </div>
+    </div>
+    <form class="hero-search" action="/foreis/" method="get">
+      <label for="home-search">Βρες έναν φορέα</label>
+      <input id="home-search" type="search" name="q" placeholder="π.χ. Δήμος, Υπουργείο, Περιφέρεια" aria-label="Αναζήτηση φορέα" />
+      <p>Η αναζήτηση στο header οδηγεί απευθείας στο προφίλ φορέα όταν φορτώσει το index.</p>
     </form>
   </section>
 
@@ -121,6 +133,10 @@ const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},$
       <h3>Λοιποί φορείς</h3>
       <p>ΝΠΔΔ, ΝΠΙΔ, ανεξάρτητες αρχές, οργανισμοί δημοσίου δικαίου</p>
     </a>
+    <a class="entry-card" href="/deiktes/">
+      <h3>Οδηγός δεικτών</h3>
+      <p>Ορισμοί, παραδείγματα και παγίδες για κάθε δημοσιευμένο δείκτη</p>
+    </a>
   </section>
 
   <div class="teaser">
@@ -132,3 +148,79 @@ const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},$
     </p>
   </div>
 </Base>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+    gap: 2rem;
+    align-items: center;
+    padding: 2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 18%, transparent), transparent 35%),
+      var(--panel);
+  }
+  .hero h1 {
+    font-size: clamp(2rem, 5vw, 4rem);
+    line-height: 1.02;
+    max-width: 12ch;
+    margin: 0.3rem 0 1rem;
+  }
+  .eyebrow {
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+  }
+  .hero-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1.25rem;
+  }
+  .primary-button, .secondary-button {
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 0.95rem;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .primary-button {
+    background: var(--accent);
+    color: white;
+  }
+  .secondary-button {
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .hero-search {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .hero-search label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+  .hero-search input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 0.85rem;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .hero-search p {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-bottom: 0;
+  }
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; padding: 1.25rem; }
+  }
+</style>

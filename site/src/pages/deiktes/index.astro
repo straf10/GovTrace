@@ -1,0 +1,43 @@
+---
+import Base from "../../layouts/Base.astro";
+import { publishedIndicators } from "../../lib/indicators";
+
+const statusLabel = {
+  published: "Δημοσιεύεται",
+  partial: "Μερικώς",
+  pending: "Εκκρεμεί",
+};
+---
+<Base title="Δείκτες" description="Οδηγός των δημοσιευμένων δεικτών διαφάνειας διαδικασιών του Ελλάδα 3.0.">
+  <h1>Δείκτες</h1>
+  <p class="subtitle">
+    Οι δείκτες είναι στατιστικά μέτρα χαρακτηριστικών διαδικασιών. Δεν αποτελούν διαπίστωση παρανομίας
+    και διαβάζονται πάντα μαζί με τιμή, N και περίοδο.
+  </p>
+
+  <div class="entry-cards indicator-index">
+    {publishedIndicators.map((indicator) => (
+      <a class="entry-card" href={`/deiktes/${indicator.slug}/`}>
+        <div class="card-kicker">§{indicator.section} · {statusLabel[indicator.status]}</div>
+        <h3>{indicator.title}</h3>
+        <p>{indicator.summary}</p>
+      </a>
+    ))}
+  </div>
+
+  <div class="teaser">
+    <p>
+      Το §4.5 bid-splitting δεν εμφανίζεται εδώ μέχρι να ολοκληρωθεί η νομική επιβεβαίωση των ορίων.
+      Το §4.7 `pct_short_deadline` παραμένει επίσης εκτός δημοσίευσης.
+    </p>
+  </div>
+</Base>
+
+<style>
+  .indicator-index .entry-card { min-height: 11rem; }
+  .card-kicker {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-bottom: 0.35rem;
+  }
+</style>

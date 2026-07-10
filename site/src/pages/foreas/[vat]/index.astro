@@ -51,7 +51,7 @@ for (const row of stackedRows) {
 }
 const stackedSvg = stackedValueSvg(stackedRows);
 
-function indicatorInput(key: "da" | "hhi" | "discount" | "deadline") {
+function indicatorInput(key: "da" | "hhi" | "single_bid" | "discount" | "deadline" | "composite") {
   const series = page.indicators?.[key] ?? {};
   const points = years.map((y) => {
     const entry = series[String(y)];
@@ -68,8 +68,10 @@ function indicatorInput(key: "da" | "hhi" | "discount" | "deadline") {
 
 const da = indicatorInput("da");
 const hhi = indicatorInput("hhi");
+const singleBid = indicatorInput("single_bid");
 const discount = indicatorInput("discount");
 const deadline = indicatorInput("deadline");
+const composite = indicatorInput("composite");
 
 const mailtoSubject = encodeURIComponent(`[ΔΙΟΡΘΩΣΗ] ${page.name ?? vat}`);
 const mailto = `mailto:ellada30@proton.me?subject=${mailtoSubject}`;
@@ -99,22 +101,26 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
 
   {latestOverview ? (
     <section>
-      <div class="stat-tiles">
-        <div class="stat-tile">
-          <div class="value">{eur(latestOverview.value_total)}</div>
-          <div class="label">Συνολική αξία</div>
-          <div class="period">{latestYear}</div>
+      <div class="period-panel" data-period-panel>
+        <div class="period-controls">
+          <label>
+            Περίοδος
+            <select id="period-mode">
+              <option value="latest">Τελευταίο έτος</option>
+              <option value="all">Ολόκληρη περίοδος</option>
+              <option value="custom">Custom εύρος</option>
+            </select>
+          </label>
+          <label>
+            Από
+            <select id="period-from"></select>
+          </label>
+          <label>
+            Έως
+            <select id="period-to"></select>
+          </label>
         </div>
-        <div class="stat-tile">
-          <div class="value">{nf.format(latestOverview.n_total)}</div>
-          <div class="label">Πλήθος αναθέσεων</div>
-          <div class="period">{latestYear}</div>
-        </div>
-        <div class="stat-tile">
-          <div class="value">{nf.format(latestOverview.n_unique_contractors)}</div>
-          <div class="label">Μοναδικοί ανάδοχοι</div>
-          <div class="period">{latestYear}</div>
-        </div>
+        <div id="period-summary" class="stat-tiles"></div>
       </div>
 
       <div class="chart-panel">
@@ -200,6 +206,21 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
         caveat="Proxy μέσω τιμής κατακύρωσης λόγω περιορισμένης σύνδεσης notice↔contract στα δεδομένα ΚΗΜΔΗΣ."
       />
       <IndicatorCard
+        title="Single-bid rate"
+        info="Μερίδιο ανταγωνιστικών διαδικασιών με μία μόνο προσφορά, από τον πρώτο πλήρη μήνα κάλυψης bidsSubmitted."
+        defLink="/deiktes/single-bid/"
+        latestValue={singleBid.latest?.value ?? null}
+        latestYear={latestYear}
+        latestN={singleBid.latest?.n ?? null}
+        valueFormat="pct"
+        points={singleBid.points}
+        hist={singleBid.hist}
+        percentile={singleBid.percentile}
+        insufficientData={singleBid.latest?.insufficient_data ?? true}
+        coverageNote={singleBid.latest ? `Κάλυψη bidsSubmitted: ${singleBid.latest.coverage_pct ?? "—"}%` : null}
+        caveat="Δεν είναι ιστορική σειρά πριν από το cutover 2025-04· garbage τιμές bidsSubmitted εξαιρούνται ως data errors."
+      />
+      <IndicatorCard
         title="Διάμεση προθεσμία υποβολής"
         info="Ημέρες από τη δημοσίευση της προκήρυξης έως την καταληκτική ημερομηνία υποβολής προσφορών, σε ανταγωνιστικές διαδικασίες (οι απευθείας αναθέσεις εξαιρούνται)."
         defLink="/methodologia/#47-σύντομες-προθεσμίες-υποβολής"
@@ -213,6 +234,19 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
         insufficientData={deadline.latest?.insufficient_data ?? true}
         coverageNote={deadline.latest ? `Κάλυψη έγκυρων ημερομηνιών: ${deadline.latest.coverage_pct ?? "—"}%` : null}
         caveat="Το ποσοστό διαδικασιών με «σύντομη» προθεσμία δεν δημοσιεύεται ακόμα -- εκκρεμεί νομική επιβεβαίωση ελάχιστων ορίων ανά τύπο διαδικασίας."
+      />
+      <IndicatorCard
+        title="Σύνθετος δείκτης"
+        info="Μη σταθμισμένος μέσος των διαθέσιμων δημοσιευμένων flags. Δεν περιλαμβάνει bid-splitting ή pct_short_deadline."
+        defLink="/deiktes/composite/"
+        latestValue={composite.latest?.value ?? null}
+        latestYear={latestYear}
+        latestN={composite.latest?.n ?? null}
+        valueFormat="raw"
+        points={composite.points}
+        hist={composite.hist}
+        percentile={composite.percentile}
+        caveat="Διαβάζεται μόνο μαζί με τα επιμέρους flags και τα N τους· δεν είναι αυτοτελής κατάταξη νομιμότητας."
       />
     </div>
   </section>
@@ -243,6 +277,61 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
   )}
 </Base>
 
+<script define:vars={{ overview: page.overview, years }}>
+  const nf = new Intl.NumberFormat("el-GR", { maximumFractionDigits: 0 });
+  const eur = (value) => value === null || value === undefined ? "—" : `${nf.format(value)} €`;
+  const mode = document.getElementById("period-mode");
+  const from = document.getElementById("period-from");
+  const to = document.getElementById("period-to");
+  const summary = document.getElementById("period-summary");
+
+  function fillYears() {
+    for (const select of [from, to]) {
+      select.replaceChildren();
+      for (const y of years) {
+        const opt = document.createElement("option");
+        opt.value = String(y);
+        opt.textContent = String(y);
+        select.append(opt);
+      }
+    }
+    from.value = String(years[0]);
+    to.value = String(years[years.length - 1]);
+  }
+
+  function selectedYears() {
+    if (mode.value === "latest") return [years[years.length - 1]];
+    if (mode.value === "all") return years;
+    const a = Number(from.value);
+    const b = Number(to.value);
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    return years.filter((y) => y >= lo && y <= hi);
+  }
+
+  function renderPeriod() {
+    const ys = selectedYears();
+    const rows = ys.map((y) => overview[String(y)] || {});
+    const totalValue = rows.reduce((sum, r) => sum + (Number(r.value_total) || 0), 0);
+    const totalN = rows.reduce((sum, r) => sum + (Number(r.n_total) || 0), 0);
+    const directN = rows.reduce((sum, r) => sum + (Number(r.n_direct) || 0), 0);
+    const contractors = rows.reduce((sum, r) => sum + (Number(r.n_unique_contractors) || 0), 0);
+    const daPct = totalN ? (100 * directN) / totalN : null;
+    const periodLabel = ys.length === 1 ? String(ys[0]) : `${ys[0]}–${ys[ys.length - 1]}`;
+    summary.innerHTML = `
+      <div class="stat-tile"><div class="value">${eur(totalValue)}</div><div class="label">Συνολική αξία περιόδου</div><div class="period">${periodLabel}</div></div>
+      <div class="stat-tile"><div class="value">${nf.format(totalN)}</div><div class="label">Πλήθος αναθέσεων</div><div class="period">${periodLabel}</div></div>
+      <div class="stat-tile"><div class="value">${daPct === null ? "—" : `${daPct.toFixed(1)}%`}</div><div class="label">% απευθείας σε πλήθος</div><div class="period">N=${nf.format(totalN)} · ${periodLabel}</div></div>
+      <div class="stat-tile"><div class="value">${nf.format(contractors)}</div><div class="label">Άθροισμα μοναδικών αναδόχων ανά έτος</div><div class="period">${periodLabel}</div></div>`;
+  }
+
+  if (years.length) {
+    fillYears();
+    renderPeriod();
+    for (const el of [mode, from, to]) el.addEventListener("change", renderPeriod);
+  }
+</script>
+
 <style>
   .foreas-header {
     display: flex;
@@ -252,6 +341,27 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
     flex-wrap: wrap;
   }
   .foreas-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .period-panel { margin-block: 1.5rem; }
+  .period-controls {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: end;
+  }
+  .period-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  .period-controls select {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.55rem;
+    background: var(--surface);
+    color: var(--text);
+  }
   .button-outline {
     border: 1px solid var(--border);
     border-radius: 4px;

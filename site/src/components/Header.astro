@@ -6,6 +6,7 @@ const { pathname } = Astro.url;
 const navItems = [
   { href: "/", label: "Αρχική" },
   { href: "/foreis/", label: "Φορείς" },
+  { href: "/deiktes/", label: "Δείκτες" },
   { href: "/dedomena/", label: "Δεδομένα" },
   { href: "/methodologia/", label: "Μεθοδολογία" },
   { href: "/diorthoseis/", label: "Διορθώσεις" },
@@ -24,8 +25,111 @@ function isCurrent(href: string) {
         <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined}>{item.label}</a>
       ))}
     </nav>
-    <form class="site-search" action="/foreis/" method="get">
-      <input type="search" name="q" placeholder="Βρες τον φορέα σου…" aria-label="Αναζήτηση φορέα" />
+    <form class="site-search" action="/foreis/" method="get" role="search" data-global-search>
+      <input
+        id="global-search"
+        type="search"
+        name="q"
+        placeholder="Βρες τον φορέα σου…"
+        aria-label="Αναζήτηση φορέα"
+        autocomplete="off"
+        aria-expanded="false"
+        aria-controls="global-search-results"
+      />
+      <div id="global-search-results" class="search-results" role="listbox" hidden></div>
     </form>
   </div>
 </header>
+
+<script>
+  interface EntityIndexRow {
+    vat: string;
+    name: string;
+    type?: string | null;
+  }
+
+  const form = document.querySelector("[data-global-search]") as HTMLFormElement | null;
+  const input = document.getElementById("global-search") as HTMLInputElement | null;
+  const results = document.getElementById("global-search-results");
+  let entities: EntityIndexRow[] = [];
+  let activeRows: EntityIndexRow[] = [];
+
+  function clearResults() {
+    if (!results || !input) return;
+    results.hidden = true;
+    results.replaceChildren();
+    input.setAttribute("aria-expanded", "false");
+  }
+
+  function renderResults(rows: EntityIndexRow[]) {
+    if (!results || !input) return;
+    results.replaceChildren();
+    activeRows = rows;
+    if (!rows.length) {
+      clearResults();
+      return;
+    }
+    for (const row of rows) {
+      const link = document.createElement("a");
+      link.href = `/foreas/${row.vat}/`;
+      link.role = "option";
+      link.className = "search-result";
+      const name = document.createElement("span");
+      name.textContent = row.name;
+      const meta = document.createElement("small");
+      meta.textContent = `${row.vat}${row.type ? ` · ${row.type}` : ""}`;
+      link.append(name, meta);
+      results.append(link);
+    }
+    results.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function score(row: EntityIndexRow, q: string): number {
+    const name = row.name.toLowerCase();
+    const vat = row.vat;
+    if (vat.startsWith(q)) return 0;
+    if (name.startsWith(q)) return 1;
+    if (name.includes(q)) return 2;
+    return 99;
+  }
+
+  async function initGlobalSearch() {
+    if (!form || !input || !results) return;
+    try {
+      const res = await fetch("/data/entities-index.json");
+      entities = await res.json();
+    } catch {
+      entities = [];
+    }
+
+    input.addEventListener("input", () => {
+      const q = input.value.trim().toLowerCase();
+      if (q.length < 2 || !entities.length) {
+        clearResults();
+        return;
+      }
+      const matches = entities
+        .map((row) => ({ row, score: score(row, q) }))
+        .filter((r) => r.score < 99)
+        .sort((a, b) => a.score - b.score || a.row.name.localeCompare(b.row.name, "el"))
+        .slice(0, 8)
+        .map((r) => r.row);
+      renderResults(matches);
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") clearResults();
+      if (event.key === "Enter" && activeRows[0]) {
+        event.preventDefault();
+        window.location.href = `/foreas/${activeRows[0].vat}/`;
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!form.contains(event.target as Node)) clearResults();
+    });
+  }
+
+  initGlobalSearch();
+</script>

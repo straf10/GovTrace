@@ -2,6 +2,7 @@
 import Base from "../../layouts/Base.astro";
 
 const columns = [
+  { key: "compare", label: "Σύγκριση" },
   { key: "name", label: "Φορέας" },
   { key: "org_type", label: "Τύπος" },
   { key: "nuts_city", label: "Περιοχή" },
@@ -11,6 +12,8 @@ const columns = [
   { key: "da_value_pct", label: "% απευθείας (αξία)", info: "Το ίδιο μερίδιο υπολογισμένο σε αξία αντί για πλήθος αναθέσεων." },
   { key: "hhi", label: "HHI αναδόχων", info: "Συγκέντρωση δαπανών σε λίγους αναδόχους (0–1). Εξειδικευμένες αγορές έχουν εγγενώς λίγους προμηθευτές· απαιτείται ελάχιστο N≥10." },
   { key: "median_discount_pct", label: "Διάμεση έκπτωση %", info: "Διαφορά εκτιμώμενης προς τελική αξία. Συστηματικά ~0% έκπτωση σε ανταγωνιστικές διαδικασίες είναι καθιερωμένο red flag, όχι μεμονωμένη τιμή." },
+  { key: "single_bid_pct", label: "Single-bid %", info: "Μερίδιο ανταγωνιστικών διαδικασιών με μία προσφορά. Δημοσιεύεται μόνο μετά το cutover 2025-04 και με N≥5." },
+  { key: "composite_score", label: "Σύνθετος", info: "Μη σταθμισμένος μέσος δημοσιευμένων flags. Δεν περιλαμβάνει bid-splitting ή pct_short_deadline." },
 ];
 ---
 <Base title="Φορείς" description="Δείκτες διαφάνειας διαδικασιών ανά φορέα.">
@@ -19,8 +22,15 @@ const columns = [
 
   <div class="controls">
     <input id="search" type="text" placeholder="Αναζήτηση φορέα..." />
+    <select id="year-filter" aria-label="Φίλτρο έτους">
+      <option value="latest">Τελευταίο διαθέσιμο έτος ανά φορέα</option>
+      <option value="all">Όλα τα έτη</option>
+    </select>
     <span id="status">Φόρτωση δεδομένων...</span>
   </div>
+
+  <section id="compare-panel" class="compare-panel" hidden></section>
+  <section id="group-summary" class="group-summary" aria-live="polite"></section>
 
   <div class="table-wrap">
     <table id="indicators-table">
@@ -42,16 +52,18 @@ const columns = [
 <script>
   type Rec = Record<string, string | number | null>;
 
-  const state: { records: Rec[]; sortKey: string; sortDir: number; group: string | null } = {
+  const state: { records: Rec[]; sortKey: string; sortDir: number; group: string | null; year: string; selected: Set<string> } = {
     records: [],
     sortKey: "n_total",
     sortDir: -1,
     group: null,
+    year: "latest",
+    selected: new Set(),
   };
 
-  const NUMERIC_KEYS = new Set(["year", "n_total", "da_count_pct", "da_value_pct", "hhi", "median_discount_pct"]);
-  const COLS = ["name", "org_type", "nuts_city", "year", "n_total", "da_count_pct", "da_value_pct", "hhi", "median_discount_pct"];
-  const INTENSITY_KEYS = ["da_count_pct", "da_value_pct", "hhi", "median_discount_pct"];
+  const NUMERIC_KEYS = new Set(["year", "n_total", "da_count_pct", "da_value_pct", "hhi", "median_discount_pct", "single_bid_pct", "composite_score"]);
+  const COLS = ["compare", "name", "org_type", "nuts_city", "year", "n_total", "da_count_pct", "da_value_pct", "hhi", "median_discount_pct", "single_bid_pct", "composite_score"];
+  const INTENSITY_KEYS = ["da_count_pct", "da_value_pct", "hhi", "median_discount_pct", "single_bid_pct", "composite_score"];
 
   const GROUP_MATCHERS: Record<string, (orgType: string) => boolean> = {
     ota: (t) => t.includes("τοπική") || t.includes("Περιφερειακή"),
@@ -81,6 +93,7 @@ const columns = [
   function fmt(value: string | number | null, key: string): string {
     if (value === null || value === undefined) return '<span class="badge-missing">Ανεπαρκή δεδομένα</span>';
     if (key === "hhi") return Number(value).toFixed(3);
+    if (key === "composite_score") return Number(value).toFixed(3);
     if (NUMERIC_KEYS.has(key) && key !== "year" && key !== "n_total") return `${Number(value).toFixed(1)}%`;
     return esc(String(value));
   }
@@ -101,6 +114,35 @@ const columns = [
     return medians;
   }
 
+  function latestRows(records: Rec[]): Rec[] {
+    const best = new Map<string, Rec>();
+    for (const r of records) {
+      const vat = String(r.vat || "");
+      if (!vat) continue;
+      const prev = best.get(vat);
+      if (!prev || Number(r.year || 0) > Number(prev.year || 0)) best.set(vat, r);
+    }
+    return Array.from(best.values());
+  }
+
+  function applyFilters(): Rec[] {
+    const q = (document.getElementById("search") as HTMLInputElement).value.trim().toLowerCase();
+    let rows = state.records;
+
+    if (state.group && GROUP_MATCHERS[state.group]) {
+      rows = rows.filter((r) => GROUP_MATCHERS[state.group as string](String(r.org_type || "")));
+    }
+    if (state.year === "latest") {
+      rows = latestRows(rows);
+    } else if (state.year !== "all") {
+      rows = rows.filter((r) => String(r.year) === state.year);
+    }
+    if (q) {
+      rows = rows.filter((r) => String(r.name || "").toLowerCase().includes(q));
+    }
+    return rows;
+  }
+
   function intensityClass(value: number, m: number): string {
     if (value <= m) return "";
     const ratio = m > 0 ? value / m : value;
@@ -110,15 +152,7 @@ const columns = [
   }
 
   function render() {
-    const q = (document.getElementById("search") as HTMLInputElement).value.trim().toLowerCase();
-    let rows = state.records;
-
-    if (state.group && GROUP_MATCHERS[state.group]) {
-      rows = rows.filter((r) => GROUP_MATCHERS[state.group as string](String(r.org_type || "")));
-    }
-    if (q) {
-      rows = rows.filter((r) => String(r.name || "").toLowerCase().includes(q));
-    }
+    let rows = applyFilters();
 
     rows = rows.slice().sort((a, b) => {
       const av = a[state.sortKey];
@@ -136,6 +170,11 @@ const columns = [
       .slice(0, 500)
       .map((r) => {
         const cells = COLS.map((c) => {
+          if (c === "compare") {
+            const checked = typeof r.vat === "string" && state.selected.has(r.vat);
+            const disabled = !checked && state.selected.size >= 4;
+            return `<td data-label="Σύγκριση"><input type="checkbox" class="compare-check" data-vat="${esc(String(r.vat || ""))}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} aria-label="Σύγκριση φορέα"></td>`;
+          }
           const value = r[c];
           const isIntensity = INTENSITY_KEYS.includes(c) && typeof value === "number";
           const m = medians[c];
@@ -148,7 +187,8 @@ const columns = [
           if (c === "name" && isValidVat(r.vat)) {
             content = `<a href="/foreas/${r.vat}/">${content}</a>`;
           }
-          return `<td${cls ? ` class="${cls}"` : ""}>${content}</td>`;
+          const label = document.querySelector(`th[data-key="${c}"]`)?.textContent?.trim() || c;
+          return `<td data-label="${esc(label)}"${cls ? ` class="${cls}"` : ""}>${content}</td>`;
         }).join("");
         return `<tr>${cells}</tr>`;
       })
@@ -156,6 +196,84 @@ const columns = [
 
     document.getElementById("status")!.textContent =
       `${rows.length} γραμμές φορέα/έτους (εμφανίζονται έως 500) · ▲ = άνω του εθνικού διαμέσου`;
+    attachCompareChecks();
+    renderCompare(rows);
+    renderGroupSummary(rows);
+  }
+
+  function renderGroupSummary(rows: Rec[]) {
+    const host = document.getElementById("group-summary")!;
+    const groups = new Map<string, { nRows: number; nTotal: number; valueTotal: number }>();
+    for (const r of rows) {
+      const key = String(r.org_type || "Άγνωστο");
+      const g = groups.get(key) || { nRows: 0, nTotal: 0, valueTotal: 0 };
+      g.nRows += 1;
+      g.nTotal += Number(r.n_total || 0);
+      g.valueTotal += Number(r.value_total || 0);
+      groups.set(key, g);
+    }
+    const top = Array.from(groups.entries()).sort((a, b) => b[1].nTotal - a[1].nTotal).slice(0, 6);
+    host.innerHTML = `<h2>Σύνολα ανά ομάδα</h2><div class="summary-grid">${top.map(([name, g]) => `
+      <div class="summary-card">
+        <strong>${esc(name)}</strong>
+        <span>${g.nRows.toLocaleString("el-GR")} γραμμές</span>
+        <span>${g.nTotal.toLocaleString("el-GR")} αναθέσεις</span>
+      </div>`).join("")}</div>`;
+  }
+
+  function renderCompare(rows: Rec[]) {
+    const panel = document.getElementById("compare-panel")!;
+    const selectedRows = Array.from(state.selected)
+      .map((vat) => rows.find((r) => r.vat === vat) || latestRows(state.records.filter((r) => r.vat === vat))[0])
+      .filter(Boolean) as Rec[];
+    panel.hidden = selectedRows.length === 0;
+    if (!selectedRows.length) {
+      panel.innerHTML = "";
+      return;
+    }
+    const medians = computeMedians(rows);
+    const metrics = [
+      ["da_count_pct", "% απευθείας"],
+      ["hhi", "HHI"],
+      ["median_discount_pct", "Έκπτωση"],
+      ["single_bid_pct", "Single-bid"],
+      ["composite_score", "Σύνθετος"],
+    ];
+    panel.innerHTML = `
+      <div class="compare-head">
+        <h2>Σύγκριση φορέων</h2>
+        <button type="button" id="clear-compare">Καθαρισμός</button>
+      </div>
+      <p class="subtitle">Έως 4 φορείς · baseline = εθνική διάμεσος του τρέχοντος φίλτρου έτους/ομάδας.</p>
+      <div class="compare-grid">
+        ${selectedRows.map((r) => `
+          <article class="compare-card">
+            <h3>${esc(String(r.name || r.vat))}</h3>
+            <p class="muted">ΑΦΜ ${esc(String(r.vat))} · ${esc(String(r.year || "—"))}</p>
+            ${metrics.map(([key, label]) => `
+              <div class="compare-row">
+                <span>${label}</span>
+                <strong>${fmt(r[key], key)}</strong>
+                <small>διάμεσος: ${medians[key] === null ? "—" : fmt(medians[key], key)}</small>
+              </div>`).join("")}
+          </article>`).join("")}
+      </div>`;
+    document.getElementById("clear-compare")?.addEventListener("click", () => {
+      state.selected.clear();
+      render();
+    });
+  }
+
+  function attachCompareChecks() {
+    document.querySelectorAll<HTMLInputElement>(".compare-check").forEach((box) => {
+      box.addEventListener("change", () => {
+        const vat = box.dataset.vat;
+        if (!vat) return;
+        if (box.checked && state.selected.size < 4) state.selected.add(vat);
+        if (!box.checked) state.selected.delete(vat);
+        render();
+      });
+    });
   }
 
   function attachSorting() {
@@ -182,11 +300,23 @@ const columns = [
     if (group) state.group = group;
 
     document.getElementById("search")!.addEventListener("input", render);
+    document.getElementById("year-filter")!.addEventListener("change", (event) => {
+      state.year = (event.target as HTMLSelectElement).value;
+      render();
+    });
 
     try {
       const res = await fetch("/data/indicators.json");
       const payload = await res.json();
       state.records = payload.records;
+      const years = Array.from(new Set(state.records.map((r) => String(r.year)))).sort();
+      const yearSelect = document.getElementById("year-filter") as HTMLSelectElement;
+      for (const year of years) {
+        const opt = document.createElement("option");
+        opt.value = year;
+        opt.textContent = year;
+        yearSelect.append(opt);
+      }
       render();
     } catch (err) {
       document.getElementById("status")!.textContent =

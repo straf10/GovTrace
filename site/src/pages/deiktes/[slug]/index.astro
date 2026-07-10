@@ -1,0 +1,73 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { publishedIndicators } from "../../../lib/indicators";
+
+export function getStaticPaths() {
+  return publishedIndicators.map((indicator) => ({
+    params: { slug: indicator.slug },
+    props: { indicator },
+  }));
+}
+
+const { indicator } = Astro.props;
+const statusLabel = {
+  published: "Δημοσιεύεται",
+  partial: "Μερικώς δημοσιευμένος",
+  pending: "Εκκρεμεί",
+};
+---
+<Base title={indicator.title} description={`Μεθοδολογία, παράδειγμα και παγίδες για τον δείκτη ${indicator.title}.`}>
+  <p class="subtitle">§{indicator.section} · {statusLabel[indicator.status]}</p>
+  <h1>{indicator.title}</h1>
+  <p class="lead">{indicator.summary}</p>
+
+  <section class="definition-grid">
+    <div class="definition-card">
+      <h2>Φόρμουλα</h2>
+      <p><code>{indicator.formula}</code></p>
+      <p class="muted">{indicator.nRule}</p>
+    </div>
+    <div class="definition-card">
+      <h2>Πεδία ΚΗΜΔΗΣ</h2>
+      <ul>
+        {indicator.fields.map((field: string) => <li><code>{field}</code></li>)}
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Παράδειγμα</h2>
+    <p>{indicator.example}</p>
+  </section>
+
+  <section>
+    <h2>Παγίδες</h2>
+    <ul>
+      {indicator.pitfalls.map((pitfall: string) => <li>{pitfall}</li>)}
+    </ul>
+  </section>
+
+  <div class="teaser">
+    <p>
+      Πλήρες changelog και ακριβείς περιορισμοί υπάρχουν στη <a href="/methodologia/">Μεθοδολογία</a>.
+      Οι δείκτες είναι εργαλεία προτεραιοποίησης ελέγχου, όχι αυτοτελή συμπεράσματα.
+    </p>
+  </div>
+</Base>
+
+<style>
+  .lead { max-width: 780px; font-size: 1.08rem; }
+  .definition-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-block: 1.5rem;
+  }
+  .definition-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+  }
+  .definition-card h2 { margin-top: 0; }
+  .muted { color: var(--muted); }
+</style>

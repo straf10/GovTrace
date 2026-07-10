@@ -19,8 +19,11 @@ const catalog: Download[] = [
   { file: "indicator_hhi.csv", title: "Συγκέντρωση αναδόχων HHI (§4.2)", desc: "Δείκτης HHI και top-1 μερίδιο αναδόχου ανά φορέα/έτος." },
   { file: "indicator_discount_rate.csv", title: "Ποσοστό έκπτωσης (§4.6)", desc: "Διάμεση έκπτωση προκήρυξης → σύμβασης ανά φορέα/έτος (proxy, βλ. μεθοδολογία)." },
   { file: "indicator_deadlines.csv", title: "Προθεσμίες υποβολής (§4.7)", desc: "Διάμεση προθεσμία υποβολής προσφορών σε ανταγωνιστικές διαδικασίες." },
+  { file: "indicator_single_bid.csv", title: "Single-bid rate (§4.3)", desc: "Μερίδιο ανταγωνιστικών διαδικασιών με μία προσφορά, από τον πρώτο πλήρη μήνα κάλυψης." },
+  { file: "indicator_composite.csv", title: "Σύνθετος δείκτης (§4.8)", desc: "Μη σταθμισμένος μέσος δημοσιευμένων flags, χωρίς bid-splitting/pct_short_deadline." },
   { file: "indicators.json", title: "Ενιαίο JSON δεικτών", desc: "Όλοι οι δημοσιευμένοι δείκτες ανά φορέα/έτος σε ένα αρχείο (τροφοδοτεί το site)." },
   { file: "entities-index.json", title: "Ευρετήριο αναζήτησης (JSON)", desc: "Ελαφρύ ευρετήριο φορέων για την αναζήτηση του site." },
+  { file: "completeness_report.json", title: "Report πληρότητας (JSON)", desc: "Ποιοτικά μέτρα ανά έτος: ΑΦΜ, CPV, ποσά και γνωστά κενά." },
 ];
 
 function sizeLabel(bytes: number): string {
@@ -34,6 +37,19 @@ const downloads = catalog
     return fs.existsSync(p) ? { ...d, size: sizeLabel(fs.statSync(p).size) } : null;
   })
   .filter((d) => d !== null);
+
+const completenessPath = path.join(DATA_DIR, "completeness_report.json");
+const completeness = fs.existsSync(completenessPath)
+  ? JSON.parse(fs.readFileSync(completenessPath, "utf-8"))
+  : null;
+const completenessRows = completeness?.by_year ?? [];
+const lowVatRows = completenessRows.filter(
+  (r: any) => (r.pct_vat_format_valid ?? 0) < 80 || (r.pct_vat_checksum_valid ?? 0) < 80,
+);
+
+function pct(v: number | null | undefined): string {
+  return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`;
+}
 ---
 <Base title="Δεδομένα" description="Κατέβασε τα ανοιχτά δεδομένα δεικτών του Ελλάδα 3.0 σε CSV/JSON (CC BY 4.0).">
   <h1>Δεδομένα</h1>
@@ -62,11 +78,54 @@ const downloads = catalog
     </table>
   </div>
 
+  {completenessRows.length > 0 && (
+    <section>
+      <h2>Report πληρότητας ανά έτος</h2>
+      <p class="subtitle">
+        Checkpoint 1α: ποσοστά επί των raw `auction` + `contract` + `notice` εγγραφών ανά έτος.
+        Το checksum ΑΦΜ δημοσιεύεται ως ξεχωριστό ποιοτικό μέτρο, δεν κόβει το entity resolution.
+      </p>
+      {lowVatRows.length > 0 && (
+        <div class="data-finding">
+          <strong>Εύρημα:</strong> τουλάχιστον ένα έτος είναι κάτω από τον στόχο 80% σε ΑΦΜ format ή checksum.
+          Αυτό δεν κρύβεται: κρατάμε το format-valid ΑΦΜ για keying όπου χρειάζεται και δημοσιεύουμε το checksum ως προειδοποίηση ποιότητας.
+        </div>
+      )}
+      <div class="table-block">
+        <table class="downloads-table completeness-table">
+          <thead>
+            <tr>
+              <th>Έτος</th>
+              <th>Εγγραφές</th>
+              <th>Έγκυρο ΑΦΜ format</th>
+              <th>Έγκυρο ΑΦΜ checksum</th>
+              <th>Έγκυρο CPV</th>
+              <th>Έγκυρο ποσό</th>
+              <th>Μόνιμα κενά auction</th>
+            </tr>
+          </thead>
+          <tbody>
+            {completenessRows.map((r: any) => (
+              <tr>
+                <td>{r.year}</td>
+                <td>{r.records.toLocaleString("el-GR")}</td>
+                <td class={(r.pct_vat_format_valid ?? 0) < 80 ? "below-target" : ""}>{pct(r.pct_vat_format_valid)}</td>
+                <td class={(r.pct_vat_checksum_valid ?? 0) < 80 ? "below-target" : ""}>{pct(r.pct_vat_checksum_valid)}</td>
+                <td>{pct(r.pct_cpv_valid)}</td>
+                <td>{pct(r.pct_amount_valid)}</td>
+                <td>{r.auction_gaps?.length ? r.auction_gaps.join(", ") : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
   <h2>Σημειώσεις</h2>
   <ul>
     <li>Τα CSV καλύπτουν όλους τους φορείς/έτη που περνούν τα κατώφλια δημοσίευσης της μεθοδολογίας (§5) — περισσότερες γραμμές από όσες δείχνει το dashboard.</li>
     <li>Γνωστά μόνιμα κενά dataset: 2021-02 και 2025-08 (βλ. <a href="/methodologia/#49-κάλυψη-δεδομένων-γνωστά-κενά">§4.9 κάλυψη δεδομένων</a>).</li>
-    <li>Αναλυτικό report πληρότητας (% έγκυρα ΑΦΜ/CPV/ποσά ανά έτος) θα προστεθεί σε αυτή τη σελίδα.</li>
     <li>Για διορθώσεις/παρατηρήσεις στα δεδομένα: <a href="/diorthoseis/">Διορθώσεις</a>.</li>
   </ul>
 </Base>
@@ -76,4 +135,14 @@ const downloads = catalog
   .downloads-table th, .downloads-table td { text-align: left; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); white-space: normal; }
   .dl-title { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
   .table-block { margin-block: 1.5rem; }
+  .data-finding {
+    border: 1px solid color-mix(in srgb, var(--error) 35%, var(--border));
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    color: var(--text);
+    background: color-mix(in srgb, var(--error) 8%, transparent);
+    margin-block: 1rem;
+  }
+  .below-target { color: var(--error); font-weight: 700; }
+  .completeness-table td:not(:first-child), .completeness-table th:not(:first-child) { text-align: right; }
 </style>

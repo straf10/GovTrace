@@ -14,11 +14,12 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR
+from kimdis_data import PROCESSED_DIR, is_valid_vat_checksum, load_entity, normalize_vat, sanitize_value
 
 SITE_DATA_DIR = PROCESSED_DIR.parent.parent / "site" / "public" / "data"
 
@@ -31,6 +32,17 @@ PUBLISHED_CSVS = [
     "indicator_deadlines.csv",
     "indicator_composite.csv",
 ]
+
+COMPLETENESS_ENTITIES = ["auction", "contract", "notice"]
+COMPLETENESS_COLS = [
+    "organizationVatNumber",
+    "objectDetailsList",
+    "totalCostWithVAT",
+    "totalCostWithoutVAT",
+    "budget",
+]
+CPV_RE = re.compile(r"^\d{8}(?:-\d)?$")
+PERMANENT_AUCTION_GAPS = {(2021, 2), (2025, 8)}
 
 
 def read_csv_or_empty(name: str) -> pd.DataFrame:
@@ -106,6 +118,93 @@ def merge_indicators() -> list[dict]:
     return merged.to_dict(orient="records")
 
 
+def has_valid_cpv(raw: object) -> bool:
+    if not raw:
+        return False
+    try:
+        details = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(details, list):
+        return False
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        for cpv in item.get("cpvs") or []:
+            key = str(cpv.get("key") or "").strip()
+            if CPV_RE.fullmatch(key):
+                return True
+    return False
+
+
+def build_completeness_report() -> dict:
+    frames = []
+    by_entity = []
+    for entity in COMPLETENESS_ENTITIES:
+        df = load_entity(entity, columns=COMPLETENESS_COLS)
+        if df.empty:
+            continue
+        df["entity"] = entity
+        frames.append(df)
+        by_entity.append(_completeness_rows(df, entity))
+
+    rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    by_year = _completeness_rows(rows, "all") if not rows.empty else []
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "permanent_auction_gaps": [
+            {"year": year, "month": month, "label": f"{year}-{month:02d}"}
+            for year, month in sorted(PERMANENT_AUCTION_GAPS)
+        ],
+        "by_year": by_year,
+        "by_entity_year": [row for rows_for_entity in by_entity for row in rows_for_entity],
+    }
+
+
+def _completeness_rows(df: pd.DataFrame, entity: str) -> list[dict]:
+    if df.empty:
+        return []
+
+    vat_norm = df["organizationVatNumber"].map(normalize_vat)
+    value = sanitize_value(
+        pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce")
+        .fillna(pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce"))
+        .fillna(pd.to_numeric(df.get("budget"), errors="coerce"))
+    )
+    work = pd.DataFrame(
+        {
+            "year": df["_source_year"],
+            "entity": entity,
+            "vat_format_valid": vat_norm.notna(),
+            "vat_checksum_valid": vat_norm.map(lambda v: is_valid_vat_checksum(v) if v else False),
+            "cpv_valid": df["objectDetailsList"].map(has_valid_cpv),
+            "amount_valid": value.notna() & (value > 0),
+        }
+    )
+
+    rows = []
+    for year, g in work.groupby("year"):
+        n = len(g)
+        gap_labels = [
+            f"{gap_year}-{gap_month:02d}"
+            for gap_year, gap_month in sorted(PERMANENT_AUCTION_GAPS)
+            if gap_year == int(year) and entity in {"all", "auction"}
+        ]
+        rows.append(
+            {
+                "year": int(year),
+                "entity": entity,
+                "records": int(n),
+                "pct_vat_format_valid": round(100.0 * float(g["vat_format_valid"].mean()), 2) if n else None,
+                "pct_vat_checksum_valid": round(100.0 * float(g["vat_checksum_valid"].mean()), 2) if n else None,
+                "pct_cpv_valid": round(100.0 * float(g["cpv_valid"].mean()), 2) if n else None,
+                "pct_amount_valid": round(100.0 * float(g["amount_valid"].mean()), 2) if n else None,
+                "auction_gaps": gap_labels,
+            }
+        )
+    return rows
+
+
 # Ελάχιστο πλήθος αναθέσεων φορέα/έτους για να εμφανιστεί στο dashboard v1
 # (καθαρά πρακτικό όριο μεγέθους JSON/UX -- δεν είναι το ίδιο με τα κατώφλια
 # δημοσίευσης ανά δείκτη του METHODOLOGY.md §5, τα οποία εφαρμόζονται ήδη
@@ -126,6 +225,11 @@ def main() -> None:
     out_path = SITE_DATA_DIR / "indicators.json"
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=None), encoding="utf-8")
     print(f"Site data -> {out_path} ({len(records)} rows)".encode("ascii", "replace").decode("ascii"))
+
+    completeness = build_completeness_report()
+    completeness_path = SITE_DATA_DIR / "completeness_report.json"
+    completeness_path.write_text(json.dumps(completeness, ensure_ascii=False, indent=None), encoding="utf-8")
+    print(f"Completeness report -> {completeness_path}".encode("ascii", "replace").decode("ascii"))
 
     # Δημοσιεύσιμα CSV για τη σελίδα /dedomena/ (μόνο δείκτες που το site
     # ήδη δημοσιεύει -- ΟΧΙ bid_splitting §4.5 / vat_resolver, βλ. MEMORY).
