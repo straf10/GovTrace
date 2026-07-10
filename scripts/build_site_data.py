@@ -22,6 +22,14 @@ from kimdis_data import PROCESSED_DIR
 
 SITE_DATA_DIR = PROCESSED_DIR.parent.parent / "site" / "public" / "data"
 
+PUBLISHED_CSVS = [
+    "entities.csv",
+    "indicator_direct_award.csv",
+    "indicator_hhi.csv",
+    "indicator_discount_rate.csv",
+    "indicator_deadlines.csv",
+]
+
 
 def read_csv_or_empty(name: str) -> pd.DataFrame:
     path = PROCESSED_DIR / name
@@ -100,6 +108,14 @@ def main() -> None:
     out_path = SITE_DATA_DIR / "indicators.json"
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=None), encoding="utf-8")
     print(f"Site data -> {out_path} ({len(records)} rows)".encode("ascii", "replace").decode("ascii"))
+
+    # Δημοσιεύσιμα CSV για τη σελίδα /dedomena/ (μόνο δείκτες που το site
+    # ήδη δημοσιεύει -- ΟΧΙ bid_splitting §4.5 / vat_resolver, βλ. MEMORY).
+    for name in PUBLISHED_CSVS:
+        src = PROCESSED_DIR / name
+        if src.exists():
+            (SITE_DATA_DIR / name).write_bytes(src.read_bytes())
+            print(f"CSV -> {SITE_DATA_DIR / name}".encode("ascii", "replace").decode("ascii"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,79 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+import Base from "../../layouts/Base.astro";
+
+// Μεγέθη αρχείων υπολογίζονται στο build ώστε η σελίδα να μη λέει ψέματα
+// αν κάποιο CSV λείπει από το public/data (τότε απλώς δεν εμφανίζεται).
+const DATA_DIR = path.join(process.cwd(), "public", "data");
+
+interface Download {
+  file: string;
+  title: string;
+  desc: string;
+}
+
+const catalog: Download[] = [
+  { file: "entities.csv", title: "Φορείς (entities)", desc: "Μητρώο φορέων: ΑΦΜ, όνομα, τύπος, ομάδα, περιοχή." },
+  { file: "indicator_direct_award.csv", title: "Δείκτης απευθείας αναθέσεων (§4.1)", desc: "% απευθείας αναθέσεων ανά φορέα/έτος, σε πλήθος και αξία." },
+  { file: "indicator_hhi.csv", title: "Συγκέντρωση αναδόχων HHI (§4.2)", desc: "Δείκτης HHI και top-1 μερίδιο αναδόχου ανά φορέα/έτος." },
+  { file: "indicator_discount_rate.csv", title: "Ποσοστό έκπτωσης (§4.6)", desc: "Διάμεση έκπτωση προκήρυξης → σύμβασης ανά φορέα/έτος (proxy, βλ. μεθοδολογία)." },
+  { file: "indicator_deadlines.csv", title: "Προθεσμίες υποβολής (§4.7)", desc: "Διάμεση προθεσμία υποβολής προσφορών σε ανταγωνιστικές διαδικασίες." },
+  { file: "indicators.json", title: "Ενιαίο JSON δεικτών", desc: "Όλοι οι δημοσιευμένοι δείκτες ανά φορέα/έτος σε ένα αρχείο (τροφοδοτεί το site)." },
+  { file: "entities-index.json", title: "Ευρετήριο αναζήτησης (JSON)", desc: "Ελαφρύ ευρετήριο φορέων για την αναζήτηση του site." },
+];
+
+function sizeLabel(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+const downloads = catalog
+  .map((d) => {
+    const p = path.join(DATA_DIR, d.file);
+    return fs.existsSync(p) ? { ...d, size: sizeLabel(fs.statSync(p).size) } : null;
+  })
+  .filter((d) => d !== null);
+---
+<Base title="Δεδομένα" description="Κατέβασε τα ανοιχτά δεδομένα δεικτών του Ελλάδα 3.0 σε CSV/JSON (CC BY 4.0).">
+  <h1>Δεδομένα</h1>
+  <p class="subtitle">Όλα τα δημοσιευμένα δεδομένα του site, ελεύθερα για κατέβασμα και επανάχρηση (CC BY 4.0).</p>
+
+  <div class="teaser">
+    <p>
+      Πηγή: ΚΗΜΔΗΣ Open Data (CC BY 4.0). Οι δείκτες είναι <strong>στατιστικοί δείκτες ρίσκου διαδικασιών</strong>,
+      όχι διαπιστώσεις παρανομίας — δείτε τη <a href="/methodologia/">μεθοδολογία</a> για ορισμούς,
+      κατώφλια δημοσίευσης και γνωστά κενά δεδομένων.
+    </p>
+  </div>
+
+  <div class="table-block">
+    <table class="downloads-table">
+      <thead><tr><th>Αρχείο</th><th>Περιγραφή</th><th>Μέγεθος</th></tr></thead>
+      <tbody>
+        {downloads.map((d) => (
+          <tr>
+            <td><a href={`/data/${d.file}`} download>{d.file}</a><div class="dl-title">{d.title}</div></td>
+            <td>{d.desc}</td>
+            <td>{d.size}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Σημειώσεις</h2>
+  <ul>
+    <li>Τα CSV καλύπτουν όλους τους φορείς/έτη που περνούν τα κατώφλια δημοσίευσης της μεθοδολογίας (§5) — περισσότερες γραμμές από όσες δείχνει το dashboard.</li>
+    <li>Γνωστά μόνιμα κενά dataset: 2021-02 και 2025-08 (βλ. <a href="/methodologia/#49-κάλυψη-δεδομένων-γνωστά-κενά">§4.9 κάλυψη δεδομένων</a>).</li>
+    <li>Αναλυτικό report πληρότητας (% έγκυρα ΑΦΜ/CPV/ποσά ανά έτος) θα προστεθεί σε αυτή τη σελίδα.</li>
+    <li>Για διορθώσεις/παρατηρήσεις στα δεδομένα: <a href="/diorthoseis/">Διορθώσεις</a>.</li>
+  </ul>
+</Base>
+
+<style>
+  .downloads-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; table-layout: auto; }
+  .downloads-table th, .downloads-table td { text-align: left; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); white-space: normal; }
+  .dl-title { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+  .table-block { margin-block: 1.5rem; }
+</style>

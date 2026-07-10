@@ -1,11 +1,13 @@
 ---
 const { pathname } = Astro.url;
 
+// Η Αποποίηση δεν είναι στο κύριο μενού: είναι νομικό/πλαίσιο κείμενο,
+// προσβάσιμο από το footer + το disclaimer strip κάθε σελίδας.
 const navItems = [
   { href: "/", label: "Αρχική" },
   { href: "/foreis/", label: "Φορείς" },
+  { href: "/dedomena/", label: "Δεδομένα" },
   { href: "/methodologia/", label: "Μεθοδολογία" },
-  { href: "/apopoiisi/", label: "Αποποίηση" },
   { href: "/diorthoseis/", label: "Διορθώσεις" },
 ];
 

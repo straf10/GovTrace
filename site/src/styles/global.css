@@ -4,12 +4,29 @@
   --muted: #64748b;
   --accent: #1d4ed8;
   --accent-soft: #eff4ff;
+  --on-accent-soft: #1e293b;
+  --badge-bg: #e2e8f0;
   --error: #b42318;
   --surface: Canvas;
   --text: CanvasText;
   --blue-1: #dbeafe;
   --blue-2: #93c5fd;
   --blue-3: #2563eb;
+}
+
+/* Σε dark mode τα «soft» πλαίσια γίνονται σκούρα με ανοιχτό κείμενο --
+   αλλιώς μένουν ανοιχτόχρωμα κουτιά που ξεχωρίζουν άσχημα και, όπου το
+   κείμενο κληρονομεί CanvasText (λευκό), γίνεται δυσανάγνωστο. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --border: #334155;
+    --muted: #94a3b8;
+    --accent: #93c5fd;
+    --accent-soft: #1e293b;
+    --on-accent-soft: #dbeafe;
+    --badge-bg: #334155;
+    --error: #fca5a5;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -82,7 +99,7 @@ header.site-header .inner {
 /* Disclaimer strip */
 .disclaimer-strip {
   background: var(--accent-soft);
-  color: #1e293b;
+  color: var(--on-accent-soft);
   border-bottom: 1px solid var(--border);
   font-size: 0.85rem;
 }
@@ -175,7 +192,7 @@ h1 { margin-bottom: 0.25rem; }
   border-left: 4px solid var(--accent);
   padding: 1rem 1.25rem;
   background: var(--accent-soft);
-  color: #1e293b;
+  color: var(--on-accent-soft);
   border-radius: 4px;
   margin-block: 2rem;
 }
@@ -275,7 +292,7 @@ td.intensity-3 { background: color-mix(in srgb, var(--blue-3) 30%, white); color
 
 .badge-missing {
   display: inline-block;
-  background: #e2e8f0;
+  background: var(--badge-bg);
   color: var(--muted);
   border-radius: 3px;
   padding: 0.05rem 0.4rem;
@@ -296,7 +313,17 @@ td.intensity-3 { background: color-mix(in srgb, var(--blue-3) 30%, white); color
 .doc-content h2 { margin-top: 2rem; }
 .doc-content table { font-size: 0.9rem; margin-block: 1rem; }
 .doc-content th, .doc-content td { text-align: left; }
-.doc-content code { background: var(--accent-soft); color: #1e293b; padding: 0.1rem 0.3rem; border-radius: 3px; }
+.doc-content code { background: var(--accent-soft); color: var(--on-accent-soft); padding: 0.1rem 0.3rem; border-radius: 3px; }
+.doc-content pre { background: var(--accent-soft); color: var(--on-accent-soft); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; }
+.doc-content pre code { background: none; padding: 0; color: inherit; }
+.doc-content blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--on-accent-soft);
+  margin-inline: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+}
 
 /* Empty state */
 .empty-state {
