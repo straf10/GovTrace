@@ -32,7 +32,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR, build_vat_resolver, load_entity, load_vat_resolver, resolve_vat
+from kimdis_data import (
+    PROCESSED_DIR,
+    VALUE_SANITY_CAP,
+    build_vat_resolver,
+    load_entity,
+    load_vat_resolver,
+    resolve_vat,
+    sanitize_value,
+)
 
 SITE_DIR = PROCESSED_DIR.parent.parent / "site"
 BUILD_DATA_DIR = SITE_DIR / "src" / "data"   # build-time only, ΟΧΙ deployed
@@ -185,9 +193,9 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
     df["vat"] = resolve_vat(df, resolver)
     df = df.dropna(subset=["vat"])
 
-    df["value"] = pd.to_numeric(df["totalCostWithoutVAT"], errors="coerce").fillna(
+    df["value"] = sanitize_value(pd.to_numeric(df["totalCostWithoutVAT"], errors="coerce").fillna(
         pd.to_numeric(df["totalCostWithVAT"], errors="coerce")
-    )
+    ))
     df["is_direct"] = df["procedureType.key"].astype(str) == DIRECT_AWARD_KEY
     df["submission_date"] = pd.to_datetime(df["submissionDate"], errors="coerce")
     df["cpv"] = df["objectDetailsList"].map(_first_cpv)
@@ -257,7 +265,11 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
                 "adam": row["referenceNumber"],
                 "date": row["submission_date"].date().isoformat(),
                 "title": row["title"],
-                "amount_with_vat": round(float(row["totalCostWithVAT"]), 2) if pd.notna(row["totalCostWithVAT"]) else None,
+                "amount_with_vat": (
+                    round(float(row["totalCostWithVAT"]), 2)
+                    if pd.notna(row["totalCostWithVAT"]) and float(row["totalCostWithVAT"]) <= VALUE_SANITY_CAP
+                    else None
+                ),
                 "procedure": row["procedureType.value"],
                 "contractor_name": row["contractor_name"],
             }

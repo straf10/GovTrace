@@ -179,6 +179,29 @@ def is_valid_vat_checksum(vat: str) -> bool:
 NAME_COL = "organization.value"
 VAT_COL = "organizationVatNumber"
 
+# 2026-07-10 session: το εθνικό sanity-check του compute_indicators_v1.py
+# (da_value_pct) ταλαντευόταν χωρίς λογική έτος προς έτος (33%→97%→41%→98%...).
+# Αιτία: 20 εγγραφές totalCostWithVAT/WithoutVAT >1 δισ. ευρώ, μερικές έως
+# €600 δισ., με χαρακτηριστικό fingerprint φθαρμένης πηγής -- π.χ. ΑΦΜ
+# "11111111111" με ποσό ακριβώς 111.111.111.111 (προφανές placeholder/test
+# row), ή Δήμος Αγίας Παρασκευής με €600.030.600.000 σε μία ανάθεση όταν ο
+# μέσος όρος των υπόλοιπων 802 αναθέσεών του είναι €13.600. Το όριο 10 δισ.
+# χωρίζει καθαρά αυτές τις 9 εγγραφές-σκουπίδια από τις μεγαλύτερες αλλά
+# εύλογες τιμές που μένουν (π.χ. ΑΔΜΗΕ €2,06δισ., Υπ. Εθνικής Άμυνας
+# €4,26δισ.). Δεν κάνει clip στο cap -- τις μηδενίζει, ώστε να μην
+# διαστρεβλώνουν sums/rankings (π.χ. terciles μεγέθους στο build_foreas_data.py).
+VALUE_SANITY_CAP = 10_000_000_000.0  # 10 δισ. ευρώ
+
+
+def sanitize_value(value: pd.Series) -> pd.Series:
+    """Μηδενίζει τιμές πάνω από ``VALUE_SANITY_CAP`` (βλ. σημείωση παραπάνω)."""
+    out = value.copy()
+    bad = out > VALUE_SANITY_CAP
+    if bad.any():
+        logger.warning("sanitize_value: %d τιμές > %.0f -- μηδενίζονται ως σκουπίδια πηγής", bad.sum(), VALUE_SANITY_CAP)
+        out.loc[bad] = None
+    return out
+
 
 def build_vat_resolver(frames: list[pd.DataFrame], min_share: float = 0.9) -> pd.Series:
     """Χτίζει lookup όνομα->ΑΦΜ από όλες τις γραμμές που έχουν ήδη έγκυρο ΑΦΜ.

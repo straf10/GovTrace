@@ -27,7 +27,16 @@ from pathlib import Path
 
 import pandas as pd
 
-from kimdis_data import NAME_COL, PROCESSED_DIR, VAT_COL, build_vat_resolver, load_entity, load_vat_resolver, resolve_vat
+from kimdis_data import (
+    NAME_COL,
+    PROCESSED_DIR,
+    VAT_COL,
+    build_vat_resolver,
+    load_entity,
+    load_vat_resolver,
+    resolve_vat,
+    sanitize_value,
+)
 
 RAW_DIR = Path("data/raw")
 OUT_DIR = PROCESSED_DIR
@@ -75,9 +84,9 @@ def mode_name(names: pd.Series) -> str | None:
 
 def direct_award_rate(auctions: pd.DataFrame) -> pd.DataFrame:
     df = auctions.copy()
-    df["value"] = pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce").fillna(
+    df["value"] = sanitize_value(pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce").fillna(
         pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce")
-    )
+    ))
     df["is_direct"] = df["procedureType.key"].astype(str) == DIRECT_AWARD_KEY
     df = df.dropna(subset=["vat_norm"])
 
@@ -105,9 +114,9 @@ def direct_award_rate(auctions: pd.DataFrame) -> pd.DataFrame:
 
 def hhi_concentration(contracts: pd.DataFrame) -> pd.DataFrame:
     df = contracts.copy()
-    df["value"] = pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce").fillna(
+    df["value"] = sanitize_value(pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce").fillna(
         pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce")
-    )
+    ))
 
     def parse_members(raw: str | None) -> list[dict]:
         if not raw:
@@ -188,9 +197,9 @@ def bid_splitting(auctions: pd.DataFrame) -> pd.DataFrame:
     διαδικασίας), όχι μία μεμονωμένη τιμή.
     """
     df = auctions.copy()
-    df["value"] = pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce").fillna(
+    df["value"] = sanitize_value(pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce").fillna(
         pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce")
-    )
+    ))
     df["submission_date"] = pd.to_datetime(df.get("submissionDate"), errors="coerce")
     df = df.dropna(subset=["value", "submission_date"])
 
@@ -258,15 +267,15 @@ def discount_rate(notices: pd.DataFrame, auctions: pd.DataFrame) -> pd.DataFrame
         return pd.DataFrame()
 
     notice_est = notices.copy()
-    notice_est["est_value"] = pd.to_numeric(notice_est.get("totalCostWithoutVAT"), errors="coerce").fillna(
+    notice_est["est_value"] = sanitize_value(pd.to_numeric(notice_est.get("totalCostWithoutVAT"), errors="coerce").fillna(
         pd.to_numeric(notice_est.get("totalCostWithVAT"), errors="coerce")
-    ).fillna(pd.to_numeric(notice_est.get("budget"), errors="coerce"))
+    ).fillna(pd.to_numeric(notice_est.get("budget"), errors="coerce")))
     notice_lookup = notice_est.set_index("referenceNumber")["est_value"]
 
     auc = auctions.copy()
-    auc["final_value"] = pd.to_numeric(auc.get("totalCostWithoutVAT"), errors="coerce").fillna(
+    auc["final_value"] = sanitize_value(pd.to_numeric(auc.get("totalCostWithoutVAT"), errors="coerce").fillna(
         pd.to_numeric(auc.get("totalCostWithVAT"), errors="coerce")
-    )
+    ))
     auc = auc.dropna(subset=["noticeRefNo"])
     auc["est_value"] = auc["noticeRefNo"].map(notice_lookup)
     auc = auc.dropna(subset=["est_value", "final_value"])
