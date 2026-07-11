@@ -21,6 +21,11 @@ __pycache__/
 # Wrangler local state
 .wrangler/
 
+# Site build zip (README §Deploying) -- uploaded as a GitHub release
+# asset, not a repo file. Accidentally committed once (40MB); untracked
+# 2026-07-11 after it broke deploy.yml's actions/checkout step.
+/site-dist.zip
+
 # IDE / OS
 .vscode/
 .idea/
