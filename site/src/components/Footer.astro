@@ -4,21 +4,32 @@ import path from "node:path";
 
 const dataPath = path.join(process.cwd(), "public", "data", "indicators.json");
 let generatedAt: string | null = null;
+let coverageMonth: string | null = null;
 try {
   const payload = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
   generatedAt = payload.generated_at ?? null;
+  coverageMonth = payload.data_coverage_month ?? null;
 } catch {
   generatedAt = null;
+  coverageMonth = null;
 }
 
 const lastUpdated = generatedAt
   ? new Date(generatedAt).toLocaleDateString("el-GR", { year: "numeric", month: "long", day: "numeric" })
   : null;
+
+// E2 (nightly): ο τρέχων μήνας ΔΕΝ κατεβαίνει ποτέ (A2 guard) -- το nightly
+// φέρνει πραγματικά νέα δεδομένα ~1x/μήνα, όχι καθημερινά. Δείχνουμε ρητά
+// «κάλυψη έως <μήνα>» ώστε το footer να μην υπόσχεται real-time δεδομένα
+// (MASTERPLAN Τμήμα 7, αντίδοτο «ψευδαίσθησης real-time»).
+const coverageLabel = coverageMonth
+  ? new Date(`${coverageMonth}-01`).toLocaleDateString("el-GR", { year: "numeric", month: "long" })
+  : null;
 ---
 <footer class="site-footer">
   <div class="inner">
     <p>
-      Δεδομένα: ΚΗΜΔΗΣ Open Data (CC BY 4.0){lastUpdated && <> · τελευταία ενημέρωση dataset: {lastUpdated}</>}.
+      Δεδομένα: ΚΗΜΔΗΣ Open Data (CC BY 4.0){lastUpdated && <> · τελευταία ενημέρωση: {lastUpdated}</>}{coverageLabel && <> · κάλυψη έως {coverageLabel}</>}.
       Πλήρης μεθοδολογία στη σελίδα <a href="/methodologia/">Μεθοδολογία</a>,
       δικαίωμα απάντησης/διόρθωσης στην <a href="/apopoiisi/">Αποποίηση</a>.
     </p>

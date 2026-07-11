@@ -1,0 +1,102 @@
+name: Nightly refresh (R2 pull -> backfill -> pipeline -> build -> deploy -> R2 push)
+
+# E2 (docs/SPRINT_E_PLAN.md): αυτοματοποιεί την αλυσίδα που μέχρι τώρα έτρεχε
+# χειροκίνητα πριν από κάθε deploy (pipeline -> npm run build ->
+# build_release_zip.py --upload -> gh workflow run deploy.yml) -- διαδικασία
+# που είχε ήδη αποτύχει σιωπηλά 2 φορές (stale zip, sessions 19/23).
+#
+# ΔΕΝ φέρνει "καθημερινά" δεδομένα: ο τρέχων μήνας αποκλείεται πάντα από το
+# backfill (A2 guard) -- πραγματικά νέα δεδομένα έρχονται ~1x/μήνα, το
+# nightly πέρα από αυτό κάνει μόνο αυτόματο repair των αποτυχημένων μηνών
+# και πάντα φρέσκο build/deploy. Το `deploy.yml` ΔΕΝ αγγίζεται -- μένει ως
+# χειροκίνητο emergency-path fallback (πάντα φρέσκο zip πριν το dispatch,
+# βλ. session 23 gotcha).
+
+on:
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC ~= 06:30 Ελλάδας, εκτός ωρών αιχμής ΚΗΜΔΗΣ
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ellada30
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write # gh release upload (build_release_zip.py --upload)
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      PYTHONIOENCODING: utf-8 # γνωστό cp1252 gotcha στα ελληνικά prints (session 19)
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14.6" # ίδιο minor με το τοπικό venv (βλ. requirements.lock header)
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22.12.0"
+
+      - name: pip install (requirements.lock -- αναπαραγώγιμο build, S2)
+        run: pip install -r requirements.lock
+
+      - name: R2 pull (data/raw, data/processed)
+        run: python scripts/r2_sync.py pull
+
+      - name: Backfill (νέος κλεισμένος μήνας + retry αποτυχιών)
+        # ΡΗΤΑ entities (όχι το default του script) -- payment δεν έχει μπει
+        # ακόμα (εκκρεμεί E3)· θα προστεθεί στο flag μόλις κλείσει το gate.
+        # continue-on-error: γνωστά server-side timeouts ΚΗΜΔΗΣ (fail-soft
+        # πολιτική -- το site ξαναχτίζεται με ό,τι raw υπάρχει, ΠΟΤΕ με
+        # μερικό μήνα, εγγύηση του _backfill_failures.json manifest).
+        continue-on-error: true
+        run: python scripts/backfill_historical.py --start-year 2020 --entities auction contract notice
+
+      - name: Pipeline (entity table -> indicators -> site data -> foreas data)
+        run: |
+          python scripts/build_entity_table.py
+          python scripts/compute_indicators_v1.py
+          python scripts/build_site_data.py
+          python scripts/build_foreas_data.py
+
+      - name: npm ci && astro build
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build release zip + upload (site-data-latest asset)
+        run: python scripts/build_release_zip.py --upload
+
+      - name: Deploy to Cloudflare Pages
+        # Ίδιο pattern με το deploy.yml (commit c11952d) -- τρέχει από site/
+        # ώστε το wrangler να βρει το site/functions/.
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: site
+          command: pages deploy dist --project-name=ellada30 --branch=master
+
+      - name: R2 push (νέα/αλλαγμένα raw+processed πίσω στο R2)
+        run: python scripts/r2_sync.py push
+
+      - name: Verify live build-info.json matches this run's commit
+        run: |
+          sleep 15
+          live_sha=$(curl -sf https://ellada30.pages.dev/build-info.json | python -c "import json,sys; print(json.load(sys.stdin)['git_sha'])")
+          if [ "$live_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Live build-info.json git_sha ($live_sha) != GITHUB_SHA ($GITHUB_SHA) -- stale deploy."
+            exit 1
+          fi
+          echo "Live git_sha == $GITHUB_SHA, deploy επιβεβαιωμένο."

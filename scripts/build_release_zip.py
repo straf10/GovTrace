@@ -47,6 +47,12 @@ def build_info() -> dict:
 
     n_dist_files = sum(1 for p in DIST_DIR.rglob("*") if p.is_file()) if DIST_DIR.exists() else None
 
+    data_coverage_month = None
+    indicators_path = DIST_DIR / "data" / "indicators.json"
+    if indicators_path.exists():
+        with indicators_path.open(encoding="utf-8") as f:
+            data_coverage_month = json.load(f).get("data_coverage_month")
+
     return {
         "git_sha": _git("rev-parse", "HEAD"),
         "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
@@ -54,6 +60,10 @@ def build_info() -> dict:
         "entities_count": n_entities,
         "entities_csv_timestamp": entities_mtime,
         "dist_file_count": n_dist_files,
+        # E2: «κάλυψη έως» μήνας -- ίδιο πεδίο με site/public/data/indicators.json,
+        # αντιγράφεται εδώ ώστε το nightly verify step να μπορεί να το ελέγξει
+        # χωρίς να ξαναδιαβάζει το indicators.json ξεχωριστά.
+        "data_coverage_month": data_coverage_month,
     }
 
 

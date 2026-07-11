@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from kimdis_data import PROCESSED_DIR, is_valid_vat_checksum, load_entity, normalize_vat, sanitize_value
+from kimdis_data import RAW_DIR, PROCESSED_DIR, is_valid_vat_checksum, load_entity, normalize_vat, sanitize_value
 
 SITE_DATA_DIR = PROCESSED_DIR.parent.parent / "site" / "public" / "data"
 
@@ -43,6 +43,28 @@ COMPLETENESS_COLS = [
 ]
 CPV_RE = re.compile(r"^\d{8}(?:-\d)?$")
 PERMANENT_AUCTION_GAPS = {(2021, 2), (2025, 8)}
+RAW_FILENAME_RE = re.compile(r"^[a-z]+_(\d{4})_(\d{2})$")
+
+
+def latest_complete_month(raw_dir=RAW_DIR) -> str | None:
+    """«YYYY-MM» του πιο πρόσφατου μήνα με τουλάχιστον ένα raw parquet.
+
+    Ο τρέχων μήνας δεν κατεβαίνει ποτέ (A2 guard στο backfill_historical.py),
+    άρα κάθε αρχείο που υπάρχει είναι εξ ορισμού πλήρης μήνας -- το μέγιστο
+    (year, month) πάνω σε όλα τα entities είναι η «κάλυψη έως» ημερομηνία
+    που δείχνει το footer (E2, session 25/26).
+    """
+    if not raw_dir.exists():
+        return None
+    months = set()
+    for path in raw_dir.glob("*.parquet"):
+        m = RAW_FILENAME_RE.match(path.stem)
+        if m:
+            months.add((int(m.group(1)), int(m.group(2))))
+    if not months:
+        return None
+    year, month = max(months)
+    return f"{year:04d}-{month:02d}"
 
 
 def read_csv_or_empty(name: str) -> pd.DataFrame:
@@ -219,6 +241,7 @@ def main() -> None:
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "data_coverage_month": latest_complete_month(),
         "n_organizations_years": len(records),
         "records": records,
     }
