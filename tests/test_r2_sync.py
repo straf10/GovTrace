@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from r2_sync import ObjectInfo, plan_pull, plan_push
+from r2_sync import ObjectInfo, plan_pull, plan_push, pull
 
 
 class FakeStore:
@@ -130,7 +130,7 @@ def test_plan_pull_downloads_missing_local_file(raw_dir):
     })
     to_download, skipped = plan_pull(store, ["raw"])
 
-    assert [key for key, _ in to_download] == ["raw/auction_2024_01.parquet"]
+    assert [key for key, _, _ in to_download] == ["raw/auction_2024_01.parquet"]
     assert skipped == 0
 
 
@@ -154,5 +154,28 @@ def test_plan_pull_empty_folder_downloads_full_copy(raw_dir):
     })
     to_download, skipped = plan_pull(store, ["processed"])
 
-    assert {key for key, _ in to_download} == {"processed/entities.csv", "processed/vat_resolver.csv"}
+    assert {key for key, _, _ in to_download} == {"processed/entities.csv", "processed/vat_resolver.csv"}
     assert skipped == 0
+
+
+def test_pull_preserves_remote_mtime_so_push_stays_incremental(raw_dir):
+    # Regression: το boto3 download_file γράφει mtime = ώρα λήψης, οπότε χωρίς
+    # utime στο pull, ένα pull -> push (E2 nightly) θα ξανα-ανέβαζε ΟΛΑ τα αρχεία.
+    remote_time = datetime.now(timezone.utc) - timedelta(days=30)
+    listing = {"raw/auction_2024_01.parquet": ObjectInfo(size=1, last_modified=remote_time)}
+
+    class WritingFakeStore(FakeStore):
+        def download(self, key: str, path: Path) -> None:
+            _write(path)  # mtime = τώρα, όπως το πραγματικό download_file
+            super().download(key, path)
+
+    store = WritingFakeStore(listing)
+    pull(store, ["raw"], dry_run=False)
+
+    local_path = next(iter(store.downloaded))[1]
+    local_mtime = datetime.fromtimestamp(local_path.stat().st_mtime, tz=timezone.utc)
+    assert abs((local_mtime - remote_time).total_seconds()) < 1
+
+    to_upload, skipped = plan_push(store, ["raw"])
+    assert to_upload == []
+    assert skipped == 1

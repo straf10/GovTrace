@@ -91,6 +91,7 @@ import Base from "../../layouts/Base.astro";
 
   function clearEntityResults() {
     if (!entityResults || !entityInput) return;
+    activeRows = [];
     entityResults.hidden = true;
     entityResults.replaceChildren();
     entityInput.setAttribute("aria-expanded", "false");

@@ -132,19 +132,19 @@ def plan_push(store: Store, prefixes: list[str]) -> tuple[list[tuple[str, Path]]
     return to_upload, skipped
 
 
-def plan_pull(store: Store, prefixes: list[str]) -> tuple[list[tuple[str, Path]], int]:
-    """Επιστρέφει (προς-κατέβασμα [(key, local_path)], πλήθος παράλειψης)."""
-    to_download: list[tuple[str, Path]] = []
+def plan_pull(store: Store, prefixes: list[str]) -> tuple[list[tuple[str, Path, ObjectInfo]], int]:
+    """Επιστρέφει (προς-κατέβασμα [(key, local_path, remote_info)], πλήθος παράλειψης)."""
+    to_download: list[tuple[str, Path, ObjectInfo]] = []
     skipped = 0
     for prefix in prefixes:
         remote = store.list(f"{prefix}/")
-        for key in remote:
+        for key, info in remote.items():
             rel = key[len(prefix) + 1 :]
             local_path = DIR_MAP[prefix] / rel
             if local_path.exists():
                 skipped += 1
             else:
-                to_download.append((key, local_path))
+                to_download.append((key, local_path, info))
     return to_download, skipped
 
 
@@ -161,11 +161,17 @@ def push(store: Store, prefixes: list[str], dry_run: bool) -> None:
 
 def pull(store: Store, prefixes: list[str], dry_run: bool) -> None:
     to_download, skipped = plan_pull(store, prefixes)
-    for key, path in to_download:
+    for key, path, info in to_download:
         if dry_run:
             print(f"[dry-run] download {key}")
         else:
             store.download(key, path)
+            # Το boto3 download_file γράφει mtime = ώρα λήψης. Χωρίς αυτό το utime,
+            # ένα μετέπειτα push (π.χ. E2 nightly: pull -> pipeline -> push) θα έβλεπε
+            # κάθε κατεβασμένο αρχείο ως stale (local mtime > remote LastModified)
+            # και θα ξανα-ανέβαζε ολόκληρο το dataset σε κάθε run.
+            ts = info.last_modified.timestamp()
+            os.utime(path, (ts, ts))
             print(f"download {key}")
     print(f"pull: {len(to_download)} κατέβηκαν, {skipped} παραλείφθηκαν (ήδη τοπικά)")
 
