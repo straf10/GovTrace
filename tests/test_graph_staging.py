@@ -248,6 +248,54 @@ def test_garbage_amount_sanitized_and_object_dtype_survives(tmp_path: Path) -> N
     assert rel_awards_to.iloc[0]["n_awards:long"] == 3
 
 
+def test_truncated_year_date_sanitized_and_counted_as_failure(tmp_path: Path) -> None:
+    # Session 29: raw KIMDIS signedDate σποραδικά έρχεται ως "0024-01-28" αντί
+    # "2024-01-28" -- pd.to_datetime το δέχεται σιωπηλά ως έτος 24 μ.Χ. και το
+    # neo4j-admin import σκάει (strftime %Y χωρίς zero-padding στα Windows).
+    # Implausible έτη (<1900) πρέπει να μηδενίζονται σε κενό date και να
+    # μετράνε ως parse failure.
+    raw_dir = tmp_path / "raw"
+    processed_dir = tmp_path / "processed"
+    staging_dir = tmp_path / "staging"
+    raw_dir.mkdir(parents=True)
+    _write_resolver(processed_dir)
+
+    rows = [
+        {
+            "referenceNumber": "24AWRD000001",
+            "organizationVatNumber": "090153025",
+            "organization.value": "ΥΠΟΥΡΓΕΙΟ ΕΘΝΙΚΗΣ ΑΜΥΝΑΣ",
+            "nutsCode.key": None, "nutsCode.value": None,
+            "totalCostWithoutVAT": 1000.0,
+            "cancelled": False, "signedDate": "0024-01-28",
+            "contractingDataDetails.contractingMembersDataList": None,
+            "objectDetailsList": None,
+        },
+    ] + [
+        {
+            "referenceNumber": f"24AWRD00001{i}",
+            "organizationVatNumber": "090153025",
+            "organization.value": "ΥΠΟΥΡΓΕΙΟ ΕΘΝΙΚΗΣ ΑΜΥΝΑΣ",
+            "nutsCode.key": None, "nutsCode.value": None,
+            "totalCostWithoutVAT": 1000.0,
+            "cancelled": False, "signedDate": "2024-01-28",
+            "contractingDataDetails.contractingMembersDataList": None,
+            "objectDetailsList": None,
+        }
+        for i in range(300)  # αραιώνει το 1 date failure κάτω από το 0,5% κατώφλι
+    ]
+    pd.DataFrame(rows).to_parquet(raw_dir / "auction_2024_01.parquet", index=False)
+
+    report = build(["2024-01"], ["auction"], raw_dir=raw_dir, processed_dir=processed_dir, staging_dir=staging_dir)
+
+    assert report["n_date_failures"] == 1
+    awards = pd.read_csv(staging_dir / "awards.csv")
+    bad_row = awards[awards["adam:ID(Award)"] == "24AWRD000001"]
+    assert bad_row["date:date"].isna().all()
+    good_row = awards[awards["adam:ID(Award)"] == "24AWRD000010"]
+    assert good_row.iloc[0]["date:date"] == "2024-01-28"
+
+
 def test_string_cancelled_values_map_correctly(tmp_path: Path) -> None:
     # #12 (CHECK 2026-07-11): string "false" ΔΕΝ πρέπει να γίνει True.
     raw_dir = tmp_path / "raw"

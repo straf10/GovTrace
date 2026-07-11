@@ -148,12 +148,21 @@ def build(
     # dtype) και ένα raw agg(sum) θα έσκαγε/παρήγαγε σκουπίδι.
     df["_amount"] = sanitize_value(pd.to_numeric(df["totalCostWithoutVAT"], errors="coerce"))
 
+    # signedDate: το KIMDIS raw περιέχει σποραδικά έτη με λάθος αριθμό ψηφίων
+    # (π.χ. "0024-01-28" αντί "2024-01-28") -- pd.to_datetime τα δέχεται σιωπηλά
+    # ως έτος 24 μ.Χ. και το neo4j-admin import σκάει σε strftime %Y χωρίς
+    # zero-padding στα Windows. Implausible έτη (<1900) μηδενίζονται σε NaT και
+    # μετράνε ως parse failure -- ίδιος κανόνας με τα υπόλοιπα σκουπίδια πηγής.
+    df["_signed_date"] = pd.to_datetime(df["signedDate"], errors="coerce")
+    n_date_failures = int((df["_signed_date"].notna() & (df["_signed_date"].dt.year < 1900)).sum())
+    df.loc[df["_signed_date"].dt.year < 1900, "_signed_date"] = pd.NaT
+
     # #11: οι JSON parse αποτυχίες (members/CPV) μπαίνουν στο ίδιο kill-switch
     # κατώφλι με τις αποτυχίες κανονικοποίησης ΑΦΜ φορέα.
     n_org_vat_failures = int((df["_org_vat"].isna() & df["organizationVatNumber"].notna()).sum())
     n_member_json_failures = len(member_json_failures)
     n_cpv_json_failures = len(cpv_json_failures)
-    n_parse_failures = n_org_vat_failures + n_member_json_failures + n_cpv_json_failures
+    n_parse_failures = n_org_vat_failures + n_member_json_failures + n_cpv_json_failures + n_date_failures
     parse_failure_pct = n_parse_failures / n_total if n_total else 0.0
 
     awards = df[df["_org_vat"].notna() & df["referenceNumber"].notna()].copy()
@@ -197,7 +206,7 @@ def build(
     awards_out = pd.DataFrame({
         "adam:ID(Award)": awards["referenceNumber"],
         "amount_ex_vat:double": awards["_amount"],
-        "date:date": pd.to_datetime(awards["signedDate"], errors="coerce").dt.strftime("%Y-%m-%d"),
+        "date:date": awards["_signed_date"].dt.strftime("%Y-%m-%d"),
         "cancelled:boolean": cancelled_bool,
     })
     awards_out.to_csv(staging_dir / "awards.csv", index=False, encoding="utf-8-sig")
@@ -260,6 +269,7 @@ def build(
         "n_org_vat_failures": n_org_vat_failures,
         "n_member_json_failures": n_member_json_failures,
         "n_cpv_json_failures": n_cpv_json_failures,
+        "n_date_failures": n_date_failures,
         "parse_failure_pct": round(100 * parse_failure_pct, 4),
         "pct_org_vat_resolved": round(100 * df["_org_vat"].notna().mean(), 2) if n_total else 0.0,
         "pct_contractor_vat_resolved": round(100 * df["_contractor_vat"].notna().mean(), 2) if n_total else 0.0,
