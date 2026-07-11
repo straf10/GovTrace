@@ -43,27 +43,41 @@ COMPLETENESS_COLS = [
 ]
 CPV_RE = re.compile(r"^\d{8}(?:-\d)?$")
 PERMANENT_AUCTION_GAPS = {(2021, 2), (2025, 8)}
-RAW_FILENAME_RE = re.compile(r"^[a-z]+_(\d{4})_(\d{2})$")
+RAW_FILENAME_RE = re.compile(r"^([a-z]+)_(\d{4})_(\d{2})$")
+
+# #13 (CHECK 2026-07-11): τα entities που τροφοδοτούν τους κύριους δείκτες.
+# Το footer δεν πρέπει να υπερ-υποσχεθεί κάλυψη επειδή π.χ. μόνο το notice
+# έφερε νέο μήνα (ή επειδή το payment έχει 78 μήνες backfill).
+CORE_COVERAGE_ENTITIES = ("auction", "contract", "notice")
 
 
 def latest_complete_month(raw_dir=RAW_DIR) -> str | None:
-    """«YYYY-MM» του πιο πρόσφατου μήνα με τουλάχιστον ένα raw parquet.
+    """«YYYY-MM» κάλυψης: το MIN των per-entity max μηνών πάνω στα core
+    entities (auction, contract, notice).
 
     Ο τρέχων μήνας δεν κατεβαίνει ποτέ (A2 guard στο backfill_historical.py),
-    άρα κάθε αρχείο που υπάρχει είναι εξ ορισμού πλήρης μήνας -- το μέγιστο
-    (year, month) πάνω σε όλα τα entities είναι η «κάλυψη έως» ημερομηνία
-    που δείχνει το footer (E2, session 25/26).
+    άρα κάθε αρχείο που υπάρχει είναι εξ ορισμού πλήρης μήνας. #13 (CHECK
+    2026-07-11): πριν, το max πάνω σε ΟΛΑ τα entities μπορούσε να δείξει
+    «κάλυψη έως <νέος μήνας>» ενώ το auction (η βάση των κύριων δεικτών)
+    είχε αποτύχει -- τώρα δημοσιεύεται ο μήνας που έχουν ΟΛΑ τα core
+    entities. Entities εκτός λίστας (π.χ. payment) αγνοούνται.
     """
     if not raw_dir.exists():
         return None
-    months = set()
+    max_per_entity: dict[str, tuple[int, int]] = {}
     for path in raw_dir.glob("*.parquet"):
         m = RAW_FILENAME_RE.match(path.stem)
-        if m:
-            months.add((int(m.group(1)), int(m.group(2))))
-    if not months:
+        if not m:
+            continue
+        entity, year, month = m.group(1), int(m.group(2)), int(m.group(3))
+        if entity not in CORE_COVERAGE_ENTITIES:
+            continue
+        current = max_per_entity.get(entity)
+        if current is None or (year, month) > current:
+            max_per_entity[entity] = (year, month)
+    if not max_per_entity:
         return None
-    year, month = max(months)
+    year, month = min(max_per_entity.values())
     return f"{year:04d}-{month:02d}"
 
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from r2_sync import ObjectInfo, plan_pull, plan_push, pull
+from r2_sync import ObjectInfo, plan_pull, plan_push, pull, read_credential
 
 
 class FakeStore:
@@ -136,15 +136,44 @@ def test_plan_pull_downloads_missing_local_file(raw_dir):
 
 def test_plan_pull_skips_existing_local_file(raw_dir):
     raw, _ = raw_dir
-    _write(raw / "auction_2024_01.parquet")
+    local_path = _write(raw / "auction_2024_01.parquet")
 
     store = FakeStore({
-        "raw/auction_2024_01.parquet": ObjectInfo(size=10, last_modified=datetime.now(timezone.utc))
+        "raw/auction_2024_01.parquet": ObjectInfo(
+            size=local_path.stat().st_size, last_modified=datetime.now(timezone.utc)
+        )
     })
     to_download, skipped = plan_pull(store, ["raw"])
 
     assert to_download == []
     assert skipped == 1
+
+
+def test_plan_pull_redownloads_when_size_differs(raw_dir):
+    # #5 (CHECK 2026-07-11): αρχείο που επιδιορθώθηκε remotely (διαφορετικό
+    # μέγεθος) πρέπει να ξανακατέβει -- όχι να παραλειφθεί επειδή "υπάρχει".
+    raw, _ = raw_dir
+    _write(raw / "auction_2024_01.parquet", "old-version")
+
+    store = FakeStore({
+        "raw/auction_2024_01.parquet": ObjectInfo(size=99999, last_modified=datetime.now(timezone.utc))
+    })
+    to_download, skipped = plan_pull(store, ["raw"])
+
+    assert [key for key, _, _ in to_download] == ["raw/auction_2024_01.parquet"]
+    assert skipped == 0
+
+
+def test_read_credential_strips_crlf_and_whitespace(monkeypatch):
+    # #22 (CHECK 2026-07-11): secret με trailing CRLF (Windows paste) έριξε
+    # το E2 run 1 με "Invalid endpoint" -- πρέπει να καθαρίζεται defensively.
+    monkeypatch.setenv("R2_ENDPOINT", "https://example.r2.cloudflarestorage.com\r\n")
+    assert read_credential("R2_ENDPOINT") == "https://example.r2.cloudflarestorage.com"
+    monkeypatch.setenv("R2_BUCKET", "  my-bucket  ")
+    assert read_credential("R2_BUCKET") == "my-bucket"
+    monkeypatch.delenv("R2_ACCESS_KEY_ID", raising=False)
+    assert read_credential("R2_ACCESS_KEY_ID") == ""
+    assert read_credential("R2_ACCESS_KEY_ID", "default-bucket") == "default-bucket"
 
 
 def test_plan_pull_empty_folder_downloads_full_copy(raw_dir):

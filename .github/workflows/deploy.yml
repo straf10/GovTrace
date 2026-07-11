@@ -3,6 +3,15 @@ name: Deploy to Cloudflare Pages
 on:
   workflow_dispatch:
 
+# #2 (CHECK 2026-07-11): ΙΔΙΟ concurrency group με το nightly.yml -- τα GitHub
+# concurrency groups σειριοποιούν μόνο workflows που το δηλώνουν και τα δύο.
+# Χωρίς αυτό, χειροκίνητο dispatch την ώρα του nightly μπορούσε να deployάρει
+# παλιό zip ΠΑΝΩ από φρέσκο nightly deploy (stale-build κλάση σφάλματος,
+# sessions 19/23).
+concurrency:
+  group: deploy-ellada30
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

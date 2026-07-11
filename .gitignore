@@ -17,6 +17,8 @@ __pycache__/
 # Secrets
 .env
 .env.*
+# #15 (CHECK 2026-07-11): το πρότυπο ΧΩΡΙΣ secrets είναι tracked
+!.env.example
 
 # Wrangler local state
 .wrangler/

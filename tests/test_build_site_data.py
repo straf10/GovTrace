@@ -7,12 +7,33 @@ def _touch(path: Path) -> None:
     path.write_bytes(b"")
 
 
-def test_latest_complete_month_picks_max_across_entities(tmp_path):
+def test_latest_complete_month_is_min_of_core_entity_maxima(tmp_path):
+    # #13 (CHECK 2026-07-11): min πάνω στα per-entity max -- το footer δεν
+    # υπερ-υπόσχεται κάλυψη όταν ένα core entity έχει μείνει πίσω.
     _touch(tmp_path / "auction_2024_03.parquet")
     _touch(tmp_path / "contract_2024_05.parquet")
     _touch(tmp_path / "notice_2024_01.parquet")
 
-    assert latest_complete_month(tmp_path) == "2024-05"
+    assert latest_complete_month(tmp_path) == "2024-01"
+
+
+def test_latest_complete_month_uses_max_within_entity(tmp_path):
+    _touch(tmp_path / "auction_2024_03.parquet")
+    _touch(tmp_path / "auction_2024_06.parquet")
+    _touch(tmp_path / "contract_2024_06.parquet")
+    _touch(tmp_path / "notice_2024_06.parquet")
+
+    assert latest_complete_month(tmp_path) == "2024-06"
+
+
+def test_latest_complete_month_ignores_non_core_entities(tmp_path):
+    # Το payment (78 μήνες backfill) δεν πρέπει να «τραβάει» την κάλυψη.
+    _touch(tmp_path / "auction_2024_03.parquet")
+    _touch(tmp_path / "contract_2024_03.parquet")
+    _touch(tmp_path / "notice_2024_03.parquet")
+    _touch(tmp_path / "payment_2026_06.parquet")
+
+    assert latest_complete_month(tmp_path) == "2024-03"
 
 
 def test_latest_complete_month_empty_dir_returns_none(tmp_path):

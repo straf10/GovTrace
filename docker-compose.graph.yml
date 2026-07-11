@@ -1,0 +1,26 @@
+# E8 (Sprint E) — τοπικό, offline Neo4j για ανάλυση Φάσης 2.1 (NEO4J_INTEGRATION_FINAL.md).
+# ΠΟΤΕ public-facing, ΠΟΤΕ Aura, ΠΟΤΕ ports εκτός 127.0.0.1, ΠΟΤΕ πηγή αλήθειας production.
+#
+# Χρήση:
+#   1. cp .env.example .env  (αν δεν υπάρχει ήδη) και όρισε NEO4J_PASSWORD
+#   2. docker compose -f docker-compose.graph.yml up -d
+#   3. Neo4j Browser: http://127.0.0.1:7474  (ΜΟΝΟ localhost — επιβεβαίωση με netstat)
+#
+# Requires: Docker Desktop (WSL2 backend σε Windows 10/11 Home).
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: ellada30-neo4j-local
+    ports:
+      - "127.0.0.1:7474:7474"  # Browser HTTP -- ρητά μόνο localhost
+      - "127.0.0.1:7687:7687"  # Bolt -- ρητά μόνο localhost
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?Όρισε NEO4J_PASSWORD στο .env}"
+      NEO4J_PLUGINS: '["graph-data-science"]'
+      NEO4J_server_memory_heap_max__size: "4G"
+      NEO4J_server_memory_pagecache_size: "2G"
+      NEO4J_dbms_security_procedures_unrestricted: "gds.*"
+    volumes:
+      - ./data/neo4j:/data
+      - ./data/graph_staging:/import
+    restart: "no"  # χειροκίνητο start/stop -- όχι always-on service

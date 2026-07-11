@@ -8,6 +8,8 @@
 υπάρχουν ως αρχεία. Ένα αρχείο θεωρείται stale (χρειάζεται re-upload) αν λείπει
 απομακρυσμένα, έχει διαφορετικό μέγεθος, ή το τοπικό mtime είναι μεταγενέστερο
 από το remote LastModified (που ισούται με τον χρόνο του τελευταίου upload).
+Το `pull` κατεβάζει ό,τι λείπει τοπικά Ή έχει διαφορετικό μέγεθος από το remote
+(#5, CHECK 2026-07-11) -- ίδιου μεγέθους τοπικά αρχεία θεωρούνται ενημερωμένα.
 
 Χρήση:
     python scripts/r2_sync.py push [--prefix raw|processed] [--dry-run]
@@ -79,15 +81,28 @@ def load_dotenv(env_path: Path = Path(".env")) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def read_credential(name: str, default: str = "") -> str:
+    """Env var με defensive strip (#22, CHECK 2026-07-11): ένα GitHub secret
+    που έχει paste-αριστεί με trailing CRLF/κενά περνάει αόρατο (masked στα
+    logs) και ρίχνει το boto3 με κρυπτικό "Invalid endpoint" -- ακριβώς έτσι
+    απέτυχε το E2 δοκιμαστικό run 29157077165."""
+    return (os.environ.get(name) or default).strip()
+
+
 def build_store() -> R2Store:
     load_dotenv()
-    access_key = os.environ.get("R2_ACCESS_KEY_ID")
-    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
-    endpoint = os.environ.get("R2_ENDPOINT")
-    bucket = os.environ.get("R2_BUCKET", DEFAULT_BUCKET)
+    access_key = read_credential("R2_ACCESS_KEY_ID")
+    secret_key = read_credential("R2_SECRET_ACCESS_KEY")
+    endpoint = read_credential("R2_ENDPOINT")
+    bucket = read_credential("R2_BUCKET", DEFAULT_BUCKET)
     if not access_key or not secret_key or not endpoint:
         raise SystemExit(
             "Λείπουν R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT (env vars ή .env)."
+        )
+    if not endpoint.startswith("https://"):
+        raise SystemExit(
+            f"Μη έγκυρο R2_ENDPOINT ({endpoint[:30]!r}...): πρέπει να ξεκινά με https:// -- "
+            "ελέγξτε το secret για κενά/newlines/λάθος paste."
         )
 
     import boto3
@@ -141,7 +156,11 @@ def plan_pull(store: Store, prefixes: list[str]) -> tuple[list[tuple[str, Path, 
         for key, info in remote.items():
             rel = key[len(prefix) + 1 :]
             local_path = DIR_MAP[prefix] / rel
-            if local_path.exists():
+            # #5 (CHECK 2026-07-11): υπάρχον τοπικό αρχείο ξανακατεβαίνει αν το
+            # μέγεθος διαφέρει από το remote -- πριν, ένας μήνας που είχε
+            # επιδιορθωθεί remotely (audit/repair στο nightly) δεν φρεσκαριζόταν
+            # ΠΟΤΕ με pull (σιωπηλή απόκλιση τοπικού/remote dataset).
+            if local_path.exists() and local_path.stat().st_size == info.size:
                 skipped += 1
             else:
                 to_download.append((key, local_path, info))

@@ -13,8 +13,15 @@ name: Nightly refresh (R2 pull -> backfill -> pipeline -> build -> deploy -> R2 
 # βλ. session 23 gotcha).
 
 on:
-  schedule:
-    - cron: "30 3 * * *" # 03:30 UTC ~= 06:30 Ελλάδας, εκτός ωρών αιχμής ΚΗΜΔΗΣ
+  # ΠΡΟΣΩΡΙΝΑ ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ cron (CHECK 2026-07-11, ευρήματα #1/#21):
+  # (α) το E3 payment backfill τρέχει τοπικά με 300 req/min -- ταυτόχρονο
+  #     nightly fetch θα ξεπερνούσε το όριο ΚΗΜΔΗΣ (SPRINT_E_PLAN §E3)·
+  # (β) η διόρθωση OOM του build_foreas_data.py (#21) πρέπει πρώτα να
+  #     επιβεβαιωθεί με 2 δοκιμαστικά workflow_dispatch runs στον runner.
+  # Επαναφορά: ξε-σχολίασε το block ΜΕΤΑ την ολοκλήρωση του E3 και 2
+  # πράσινα dispatch runs.
+  # schedule:
+  #   - cron: "30 3 * * *" # 03:30 UTC ~= 06:30 Ελλάδας, εκτός ωρών αιχμής ΚΗΜΔΗΣ
   workflow_dispatch:
 
 concurrency:
@@ -40,7 +47,9 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14.6" # ίδιο minor με το τοπικό venv (βλ. requirements.lock header)
+          # Μόνο minor pin (#19, CHECK 2026-07-11): patch-level pin θα κοκκίνιζε
+          # το nightly όταν τα runner images αποσύρουν το συγκεκριμένο build.
+          python-version: "3.14" # ίδιο minor με το τοπικό venv (βλ. requirements.lock header)
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -59,8 +68,21 @@ jobs:
         # continue-on-error: γνωστά server-side timeouts ΚΗΜΔΗΣ (fail-soft
         # πολιτική -- το site ξαναχτίζεται με ό,τι raw υπάρχει, ΠΟΤΕ με
         # μερικό μήνα, εγγύηση του _backfill_failures.json manifest).
+        # timeout-minutes στο ΙΔΙΟ το step (#3, CHECK 2026-07-11): αλλιώς ένα
+        # κρεμασμένο backfill χτυπά το job-level 120min και ΔΕΝ γίνεται ποτέ
+        # build/deploy -- η fail-soft πολιτική ακυρωνόταν ακριβώς στο σενάριο
+        # που σχεδιάστηκε να καλύπτει.
+        id: backfill
+        timeout-minutes: 60
         continue-on-error: true
         run: python scripts/backfill_historical.py --start-year 2020 --entities auction contract notice
+
+      - name: Backfill failure warning
+        # #4 (CHECK 2026-07-11): χωρίς ρητό annotation το continue-on-error
+        # καταπίνει σιωπηλά ΚΑΘΕ αποτυχία (και regressions, όχι μόνο KIMDIS
+        # timeouts) -- το nightly θα έμενε πράσινο με παγωμένα δεδομένα.
+        if: steps.backfill.outcome == 'failure'
+        run: echo "::warning::Το backfill απέτυχε -- το site ξαναχτίστηκε με τα υπάρχοντα raw. Έλεγξε τα logs του step Backfill."
 
       - name: Pipeline (entity table -> indicators -> site data -> foreas data)
         run: |
@@ -92,11 +114,18 @@ jobs:
         run: python scripts/r2_sync.py push
 
       - name: Verify live build-info.json matches this run's commit
+        # #14 (CHECK 2026-07-11): retry loop αντί για sleep 15 + μονό curl --
+        # το CDN propagation μπορεί να αργήσει και ένα flaky failure εδώ θα
+        # κοκκίνιζε άδικα τα "3 συνεχόμενα πράσινα runs" του acceptance.
         run: |
-          sleep 15
-          live_sha=$(curl -sf https://ellada30.pages.dev/build-info.json | python -c "import json,sys; print(json.load(sys.stdin)['git_sha'])")
-          if [ "$live_sha" != "$GITHUB_SHA" ]; then
-            echo "::error::Live build-info.json git_sha ($live_sha) != GITHUB_SHA ($GITHUB_SHA) -- stale deploy."
-            exit 1
-          fi
-          echo "Live git_sha == $GITHUB_SHA, deploy επιβεβαιωμένο."
+          for attempt in 1 2 3 4 5; do
+            sleep 30
+            live_sha=$(curl -sf https://ellada30.pages.dev/build-info.json | python -c "import json,sys; print(json.load(sys.stdin)['git_sha'])" || echo "fetch-failed")
+            if [ "$live_sha" = "$GITHUB_SHA" ]; then
+              echo "Live git_sha == $GITHUB_SHA, deploy επιβεβαιωμένο (προσπάθεια $attempt)."
+              exit 0
+            fi
+            echo "Προσπάθεια $attempt/5: live git_sha=$live_sha != $GITHUB_SHA -- αναμονή CDN propagation..."
+          done
+          echo "::error::Live build-info.json git_sha ($live_sha) != GITHUB_SHA ($GITHUB_SHA) μετά από 5 προσπάθειες -- stale deploy."
+          exit 1

@@ -33,12 +33,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 from kimdis_data import (
     PROCESSED_DIR,
+    RAW_DIR,
     VALUE_SANITY_CAP,
     build_vat_resolver,
-    load_entity,
     load_vat_resolver,
     resolve_vat,
     sanitize_value,
@@ -201,8 +202,61 @@ def _first_contractor(raw: str | None) -> tuple[str, str] | None:
     return m.get("vatNumber"), m.get("name")
 
 
+# Οι δύο ογκώδεις raw JSON στήλες που ΔΕΝ επιτρέπεται να συνυπάρξουν με
+# ολόκληρο το ιστορικό στη μνήμη (#21, CHECK 2026-07-11): μαζί ~1,77 GB
+# deep memory σε 1,76M γραμμές· μαζί με τα parsing intermediates ανέβαζαν
+# το peak στα 9,78 GB (μετρημένο) -- πάνω από τα 7 GB του CI runner.
+HEAVY_JSON_COLS = ["objectDetailsList", "contractingDataDetails.contractingMembersDataList"]
+
+
+def load_auctions_slim(raw_dir=RAW_DIR) -> pd.DataFrame:
+    """Φορτώνει το auction ιστορικό ΑΝΑ αρχείο, εξάγει αμέσως τις slim στήλες
+    (cpv_code/cpv_label/contractor_vat/contractor_name -- strings, όχι tuples)
+    και πετάει τις raw JSON στήλες πριν το concat.
+
+    Ίδιο schema-tolerant pattern με το kimdis_data.load_entity (footer-only
+    schema read, συμπλήρωση απόντων στηλών με None, _source_year/_source_month
+    από το filename, dedupe referenceNumber στο τέλος), αλλά το concat γίνεται
+    πάνω στο slim σχήμα: peak μνήμης ~= 1 μήνας raw + slim ιστορικό, αντί για
+    raw JSON x όλο το ιστορικό (#21).
+    """
+    files = sorted(raw_dir.glob("auction_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+    frames = []
+    for f in files:
+        available = set(pq.ParquetFile(f).schema_arrow.names)
+        present = [c for c in AUCTION_COLS if c in available]
+        df = pd.read_parquet(f, columns=present)
+        for missing_col in AUCTION_COLS:
+            if missing_col not in df.columns:
+                df[missing_col] = None
+        _, year, month = f.stem.split("_")
+        df["_source_year"] = int(year)
+        df["_source_month"] = int(month)
+
+        cpv = df["objectDetailsList"].map(_first_cpv)
+        df["cpv_code"] = cpv.map(lambda c: c[0] if c else None)
+        df["cpv_label"] = cpv.map(lambda c: c[1] if c else None)
+        contractor = df["contractingDataDetails.contractingMembersDataList"].map(_first_contractor)
+        df["contractor_vat"] = contractor.map(lambda c: c[0] if c else None)
+        df["contractor_name"] = contractor.map(lambda c: c[1] if c else None)
+        df = df.drop(columns=HEAVY_JSON_COLS)
+        frames.append(df)
+    result = pd.concat(frames, ignore_index=True)
+    # A4/P6 dedupe -- πανομοιότυπη λογική με το load_entity (F4: μόνο μη-κενά
+    # referenceNumber, τα NaN δεν θεωρούνται ίσα μεταξύ τους).
+    ref = result["referenceNumber"]
+    dup_mask = ref.notna() & ref.duplicated(keep="last")
+    if dup_mask.any():
+        result = result[~dup_mask]
+    return result
+
+
 def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
-    df = auctions.copy()
+    """Δέχεται το slim auction frame του load_auctions_slim (cpv_code/cpv_label/
+    contractor_vat/contractor_name ήδη υπολογισμένα -- #21)."""
+    df = auctions
     df["vat"] = resolve_vat(df, resolver)
     df = df.dropna(subset=["vat"])
 
@@ -211,10 +265,6 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
     ))
     df["is_direct"] = df["procedureType.key"].astype(str) == DIRECT_AWARD_KEY
     df["submission_date"] = pd.to_datetime(df["submissionDate"], errors="coerce")
-    df["cpv"] = df["objectDetailsList"].map(_first_cpv)
-    df["contractor"] = df["contractingDataDetails.contractingMembersDataList"].map(_first_contractor)
-    df["contractor_vat"] = df["contractor"].map(lambda c: c[0] if c else None)
-    df["contractor_name"] = df["contractor"].map(lambda c: c[1] if c else None)
 
     pages: dict[str, dict] = {}
     for vat, g in df.groupby("vat"):
@@ -235,12 +285,11 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
                 "n_unique_contractors": n_unique_contractors,
             }
 
-        cpv_rows = g.dropna(subset=["cpv"])
+        cpv_rows = g.dropna(subset=["cpv_code"])
         top_cpv = []
         if not cpv_rows.empty:
             cpv_agg = (
-                cpv_rows.assign(cpv_code=cpv_rows["cpv"].map(lambda c: c[0]), cpv_label=cpv_rows["cpv"].map(lambda c: c[1]))
-                .groupby(["cpv_code", "cpv_label"])["value"].sum()
+                cpv_rows.groupby(["cpv_code", "cpv_label"])["value"].sum()
                 .sort_values(ascending=False)
                 .head(TOP_N_CPV)
             )
@@ -433,9 +482,11 @@ def main() -> None:
 
     group_of, distributions, percentiles = build_groups_distributions_percentiles(entities, da, hhi, sb, dr, dl, comp)
 
-    # _source_year προστίθεται αυτόματα από load_entity· περνάμε μόνο τις
-    # ουσιαστικές στήλες για column pruning (ταχύτητα σε ολόκληρο το ιστορικό).
-    auctions = load_entity("auction", columns=AUCTION_COLS)
+    # #21 (CHECK 2026-07-11): per-file slim loading αντί για ενιαίο
+    # load_entity -- οι raw JSON στήλες δεν συνυπάρχουν ποτέ με ολόκληρο
+    # το ιστορικό στη μνήμη (μετρημένο peak 9,78 GB -> στόχος <4 GB, ώστε
+    # να χωράει στα 7 GB του ubuntu-latest nightly runner).
+    auctions = load_auctions_slim()
     if auctions.empty:
         print("Δεν βρέθηκαν δεδομένα auction σε data/raw/.")
         return
