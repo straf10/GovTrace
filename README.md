@@ -110,6 +110,12 @@ gh release upload site-data-latest site-dist.zip --clobber   # 3. publish as the
 gh workflow run deploy.yml                                   # 4. trigger the Cloudflare Pages deploy
 ```
 
-`.github/workflows/deploy.yml` runs on `workflow_dispatch` (manual trigger, not every push — the site only changes when the data pipeline is re-run) and deploys via `cloudflare/wrangler-action`. Repo secrets `CLOUDFLARE_API_TOKEN` (Pages:Edit only) and `CLOUDFLARE_ACCOUNT_ID` are required.
+`.github/workflows/deploy.yml` runs on `workflow_dispatch` (manual trigger, not every push — the site only changes when the data pipeline is re-run), checks out the repo (needed for `site/functions/`, which isn't part of `site-dist.zip`), and deploys via `cloudflare/wrangler-action`. Repo secrets `CLOUDFLARE_API_TOKEN` (Pages:Edit only) and `CLOUDFLARE_ACCOUNT_ID` are required.
+
+**`/diorthoseis/` correction form (D11) — one-time Cloudflare Pages project setup, not automated by CI:**
+1. Create a [Resend](https://resend.com) account **using `ellada30@proton.me` as the account email** (sandbox mode without a verified domain can only deliver to the account's own address — that's exactly our recipient, so no custom domain is needed yet). Generate an API key.
+2. Create a Cloudflare KV namespace (e.g. `wrangler kv namespace create RATE_LIMIT_KV`) and bind it to the `ellada30` Pages project as `RATE_LIMIT_KV` (Pages dashboard → Settings → Functions → KV namespace bindings, both Production and Preview).
+3. Add `RESEND_API_KEY` as a Pages **secret** on the `ellada30` project (dashboard → Settings → Environment variables, or `wrangler pages secret put RESEND_API_KEY --project-name=ellada30`). Do not put it in `.env` or any committed file.
+4. Once a custom domain exists (S4), verify it in Resend and switch `from:` in `site/functions/api/submit-correction.js` off `onboarding@resend.dev` to remove the sandbox recipient restriction entirely.
 
 **Latest changes**: `4759863` Cloudflare Pages deploy workflow + CI · `12e0088` audit-fix follow-up · `faf592d` security/bug fixes (XSS escaping, pagination completeness, unified VAT resolver, test suite) · `c9ae60b` Sprint B — entity profiles + VAT re-key.
