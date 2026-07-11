@@ -2,14 +2,19 @@
 # Python 3.14.6. Εγκατάσταση: pip install -r requirements.lock
 # Ενημέρωση requirements.txt (lower bounds) πρώτα, μετά re-freeze εδώ.
 anyio==4.14.1
+boto3==1.43.46
+botocore==1.43.46
 certifi==2026.6.17
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.18
+jmespath==1.1.0
 numpy==2.5.1
 pandas==3.0.3
 pyarrow==24.0.0
 python-dateutil==2.9.0.post0
+s3transfer==0.19.1
 six==1.17.0
 tzdata==2026.2
+urllib3==2.7.0
