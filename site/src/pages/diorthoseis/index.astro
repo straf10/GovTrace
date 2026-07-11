@@ -19,9 +19,19 @@ import Base from "../../layouts/Base.astro";
         <label for="cf-email">Email <span class="muted">(απαραίτητο, για να απαντήσουμε)</span></label>
         <input id="cf-email" name="email" type="email" maxlength="200" required autocomplete="email" />
       </div>
-      <div class="form-row" id="cf-context-row" hidden>
-        <label>Αφορά φορέα</label>
-        <p id="cf-context-display" class="context-display"></p>
+      <div class="form-row entity-row">
+        <label for="cf-entity">Αφορά φορέα <span class="muted">(προαιρετικό)</span></label>
+        <input
+          id="cf-entity"
+          type="text"
+          maxlength="200"
+          autocomplete="off"
+          placeholder="Όνομα φορέα ή ΑΦΜ…"
+          aria-expanded="false"
+          aria-controls="cf-entity-results"
+        />
+        <div id="cf-entity-results" class="search-results" role="listbox" hidden></div>
+        <input id="cf-entity-vat" type="hidden" name="vat" value="" />
       </div>
       <div class="form-row">
         <label for="cf-message">Μήνυμα <span class="muted">(περιγραφή λάθους ή κείμενο απάντησης)</span></label>
@@ -56,15 +66,121 @@ import Base from "../../layouts/Base.astro";
 </Base>
 
 <script>
-  const params = new URLSearchParams(window.location.search);
-  const vat = params.get("vat") ?? "";
-  const entityName = params.get("name") ?? "";
+  interface EntityIndexRow {
+    vat: string;
+    name: string;
+    type?: string | null;
+  }
 
-  const contextRow = document.getElementById("cf-context-row");
-  const contextDisplay = document.getElementById("cf-context-display");
-  if (vat && contextRow && contextDisplay) {
-    contextDisplay.textContent = entityName ? `${entityName} (ΑΦΜ ${vat})` : `ΑΦΜ ${vat}`;
-    contextRow.hidden = false;
+  const params = new URLSearchParams(window.location.search);
+  const prefillVat = params.get("vat") ?? "";
+  const prefillName = params.get("name") ?? "";
+
+  const entityInput = document.getElementById("cf-entity") as HTMLInputElement | null;
+  const entityVat = document.getElementById("cf-entity-vat") as HTMLInputElement | null;
+  const entityResults = document.getElementById("cf-entity-results");
+
+  if (prefillVat && entityInput && entityVat) {
+    entityInput.value = prefillName ? prefillName : `ΑΦΜ ${prefillVat}`;
+    entityVat.value = prefillVat;
+  }
+
+  let entities: EntityIndexRow[] = [];
+  let entitiesLoaded = false;
+  let activeRows: EntityIndexRow[] = [];
+
+  function clearEntityResults() {
+    if (!entityResults || !entityInput) return;
+    entityResults.hidden = true;
+    entityResults.replaceChildren();
+    entityInput.setAttribute("aria-expanded", "false");
+  }
+
+  function renderEntityResults(rows: EntityIndexRow[]) {
+    if (!entityResults || !entityInput) return;
+    entityResults.replaceChildren();
+    activeRows = rows;
+    if (!rows.length) {
+      clearEntityResults();
+      return;
+    }
+    for (const row of rows) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "search-result";
+      const name = document.createElement("span");
+      name.textContent = row.name;
+      const meta = document.createElement("small");
+      meta.textContent = `${row.vat}${row.type ? ` · ${row.type}` : ""}`;
+      item.append(name, meta);
+      item.addEventListener("click", () => {
+        if (!entityInput || !entityVat) return;
+        entityInput.value = row.name;
+        entityVat.value = row.vat;
+        clearEntityResults();
+      });
+      entityResults.append(item);
+    }
+    entityResults.hidden = false;
+    entityInput.setAttribute("aria-expanded", "true");
+  }
+
+  function scoreEntity(row: EntityIndexRow, q: string): number {
+    const name = row.name.toLowerCase();
+    const vat = row.vat;
+    if (vat.startsWith(q)) return 0;
+    if (name.startsWith(q)) return 1;
+    if (name.includes(q)) return 2;
+    return 99;
+  }
+
+  async function ensureEntitiesLoaded() {
+    if (entitiesLoaded) return;
+    entitiesLoaded = true;
+    try {
+      const res = await fetch("/data/entities-index.json");
+      entities = await res.json();
+    } catch {
+      entities = [];
+    }
+  }
+
+  if (entityInput) {
+    entityInput.addEventListener("focus", () => {
+      void ensureEntitiesLoaded();
+    });
+
+    entityInput.addEventListener("input", () => {
+      if (entityVat) entityVat.value = "";
+      const q = entityInput.value.trim().toLowerCase();
+      if (q.length < 2 || !entities.length) {
+        clearEntityResults();
+        return;
+      }
+      const matches = entities
+        .map((row) => ({ row, score: scoreEntity(row, q) }))
+        .filter((r) => r.score < 99)
+        .sort((a, b) => a.score - b.score || a.row.name.localeCompare(b.row.name, "el"))
+        .slice(0, 8)
+        .map((r) => r.row);
+      renderEntityResults(matches);
+    });
+
+    entityInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") clearEntityResults();
+      if (event.key === "Enter" && activeRows[0]) {
+        event.preventDefault();
+        entityInput.value = activeRows[0].name;
+        if (entityVat) entityVat.value = activeRows[0].vat;
+        clearEntityResults();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!entityInput.contains(event.target as Node) && !entityResults?.contains(event.target as Node)) {
+        clearEntityResults();
+      }
+    });
   }
 
   const form = document.getElementById("correction-form");
@@ -84,8 +200,8 @@ import Base from "../../layouts/Base.astro";
       email: (form.elements.namedItem("email") as HTMLInputElement)?.value ?? "",
       message: (form.elements.namedItem("message") as HTMLTextAreaElement)?.value ?? "",
       website: (form.elements.namedItem("website") as HTMLInputElement)?.value ?? "",
-      vat,
-      entityName,
+      vat: (form.elements.namedItem("vat") as HTMLInputElement)?.value ?? "",
+      entityName: entityInput?.value.trim() ?? "",
     };
 
     try {
@@ -131,12 +247,16 @@ import Base from "../../layouts/Base.astro";
     color: var(--text);
     font: inherit;
   }
-  .context-display {
-    margin: 0;
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+  .entity-row { position: relative; }
+  .entity-row .search-results { inset-inline-start: 0; inset-inline-end: auto; width: 100%; max-width: 40rem; }
+  .entity-row .search-result {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: none;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
   }
   .hp-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   #correction-form button[type="submit"] { align-self: flex-start; cursor: pointer; }
