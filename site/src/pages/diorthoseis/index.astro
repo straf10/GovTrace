@@ -1,15 +1,147 @@
 ---
 import Base from "../../layouts/Base.astro";
 ---
-<Base title="Αρχείο Διορθώσεων" description="Δημόσιο αρχείο αιτημάτων διόρθωσης και δικαιώματος απάντησης.">
-  <h1>Αρχείο διορθώσεων</h1>
+<Base title="Αρχείο Διορθώσεων" description="Υπέβαλε αίτημα διόρθωσης ή απάντησης και δες το δημόσιο αρχείο εκβάσεων.">
+  <h1>Διορθώσεις & δικαίωμα απάντησης</h1>
   <p class="subtitle">
-    Κάθε αίτημα διόρθωσης ή απάντησης που υποβάλλεται μέσω της διαδικασίας του
-    <a href="/apopoiisi/">δικαιώματος απάντησης</a> καταγράφεται εδώ μαζί με την έκβασή του, χωρίς προσωπικά στοιχεία αποστολέων.
+    Αν εντόπισες λάθος σε δεδομένα ή υπολογισμό, ή θέλεις να καταθέσεις επίσημη απάντηση/διευκρίνιση για έναν φορέα,
+    χρησιμοποίησε τη φόρμα παρακάτω. Ισχύει το <a href="/apopoiisi/">δικαίωμα απάντησης</a> με το SLA που περιγράφεται εκεί.
   </p>
 
-  <div class="empty-state">
-    <p><strong>Κανένα αίτημα μέχρι σήμερα.</strong></p>
-    <p>Η ύπαρξη αυτής της σελίδας από την πρώτη μέρα είναι η απόδειξη καλής πίστης της διαδικασίας.</p>
-  </div>
+  <section id="form" class="form-section">
+    <h2>Υποβολή αιτήματος</h2>
+    <form id="correction-form" novalidate>
+      <div class="form-row">
+        <label for="cf-name">Όνομα <span class="muted">(προαιρετικό)</span></label>
+        <input id="cf-name" name="name" type="text" maxlength="200" autocomplete="name" />
+      </div>
+      <div class="form-row">
+        <label for="cf-email">Email <span class="muted">(απαραίτητο, για να απαντήσουμε)</span></label>
+        <input id="cf-email" name="email" type="email" maxlength="200" required autocomplete="email" />
+      </div>
+      <div class="form-row" id="cf-context-row" hidden>
+        <label>Αφορά φορέα</label>
+        <p id="cf-context-display" class="context-display"></p>
+      </div>
+      <div class="form-row">
+        <label for="cf-message">Μήνυμα <span class="muted">(περιγραφή λάθους ή κείμενο απάντησης)</span></label>
+        <textarea id="cf-message" name="message" rows="6" maxlength="5000" required></textarea>
+      </div>
+      <!-- honeypot: κρυφό πεδίο, μόνο bots το συμπληρώνουν -->
+      <div class="hp-field" aria-hidden="true">
+        <label for="cf-website">Ιστότοπος</label>
+        <input id="cf-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+      </div>
+      <button type="submit" class="button-outline" id="cf-submit">Υποβολή</button>
+      <p id="cf-status" class="form-status" role="status"></p>
+      <p class="sla-note">
+        Επιβεβαίωση παραλαβής εντός 2 εργάσιμων ημερών, ουσιαστική απάντηση εντός 5 εργάσιμων ημερών
+        (έως 15 για σύνθετα αιτήματα) — βλ. <a href="/apopoiisi/">δικαίωμα απάντησης</a>.
+        Αν προτιμάς, μπορείς και να στείλεις email απευθείας στο
+        <a href="mailto:ellada30@proton.me">ellada30@proton.me</a>.
+      </p>
+    </form>
+  </section>
+
+  <section>
+    <h2>Δημόσιο αρχείο</h2>
+    <p class="subtitle">
+      Κάθε αίτημα διόρθωσης ή απάντησης καταγράφεται εδώ μαζί με την έκβασή του, χωρίς προσωπικά στοιχεία αποστολέων.
+    </p>
+    <div class="empty-state">
+      <p><strong>Κανένα αίτημα μέχρι σήμερα.</strong></p>
+      <p>Η ύπαρξη αυτής της σελίδας από την πρώτη μέρα είναι η απόδειξη καλής πίστης της διαδικασίας.</p>
+    </div>
+  </section>
 </Base>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const vat = params.get("vat") ?? "";
+  const entityName = params.get("name") ?? "";
+
+  const contextRow = document.getElementById("cf-context-row");
+  const contextDisplay = document.getElementById("cf-context-display");
+  if (vat && contextRow && contextDisplay) {
+    contextDisplay.textContent = entityName ? `${entityName} (ΑΦΜ ${vat})` : `ΑΦΜ ${vat}`;
+    contextRow.hidden = false;
+  }
+
+  const form = document.getElementById("correction-form");
+  const status = document.getElementById("cf-status");
+  const submitBtn = document.getElementById("cf-submit");
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!(form instanceof HTMLFormElement) || !(submitBtn instanceof HTMLButtonElement) || !status) return;
+
+    submitBtn.disabled = true;
+    status.textContent = "Αποστολή...";
+    status.className = "form-status";
+
+    const payload = {
+      name: (form.elements.namedItem("name") as HTMLInputElement)?.value ?? "",
+      email: (form.elements.namedItem("email") as HTMLInputElement)?.value ?? "",
+      message: (form.elements.namedItem("message") as HTMLTextAreaElement)?.value ?? "",
+      website: (form.elements.namedItem("website") as HTMLInputElement)?.value ?? "",
+      vat,
+      entityName,
+    };
+
+    try {
+      const res = await fetch("/api/submit-correction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        status.textContent = "Το αίτημα εστάλη. Θα λάβεις επιβεβαίωση παραλαβής εντός 2 εργάσιμων ημερών.";
+        status.className = "form-status success";
+        form.reset();
+      } else {
+        status.textContent = "Κάτι πήγε στραβά. Δοκίμασε ξανά ή στείλε email στο ellada30@proton.me.";
+        status.className = "form-status error";
+      }
+    } catch {
+      status.textContent = "Κάτι πήγε στραβά. Δοκίμασε ξανά ή στείλε email στο ellada30@proton.me.";
+      status.className = "form-status error";
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+
+<style>
+  .form-section { margin-block: 1.5rem 2.5rem; }
+  #correction-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 40rem;
+  }
+  .form-row { display: flex; flex-direction: column; gap: 0.3rem; }
+  .form-row label { font-size: 0.85rem; color: var(--text); }
+  .form-row input,
+  .form-row textarea {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.65rem;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+  }
+  .context-display {
+    margin: 0;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+  .hp-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  #correction-form button[type="submit"] { align-self: flex-start; cursor: pointer; }
+  .form-status { min-height: 1.2em; font-size: 0.9rem; }
+  .form-status.success { color: var(--accent-strong); }
+  .form-status.error { color: #b3261e; }
+  .sla-note { font-size: 0.8rem; color: var(--muted); }
+</style>

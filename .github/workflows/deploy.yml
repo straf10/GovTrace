@@ -9,6 +9,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout repo (χρειάζεται για site/functions/, δεν έρχεται με το site-dist.zip)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
       - name: Download site build (site-data-latest release asset)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

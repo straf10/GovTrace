@@ -73,8 +73,7 @@ const discount = indicatorInput("discount");
 const deadline = indicatorInput("deadline");
 const composite = indicatorInput("composite");
 
-const mailtoSubject = encodeURIComponent(`[ΔΙΟΡΘΩΣΗ] ${page.name ?? vat}`);
-const mailto = `mailto:ellada30@proton.me?subject=${mailtoSubject}`;
+const correctionFormUrl = `/diorthoseis/?vat=${encodeURIComponent(vat ?? "")}&name=${encodeURIComponent(page.name ?? "")}#form`;
 
 // S3 (audit): validate ADAM format before building the URL -- ο ΑΔΑΜ μπαίνει
 // σε href attribute χωρίς αυτόν τον έλεγχο θα μπορούσε ένα μη τυπικό string
@@ -95,7 +94,7 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
     </div>
     <div class="foreas-actions">
       <a class="button-outline" href="/dedomena/">Κατέβασε τα δεδομένα (CSV)</a>
-      <a class="button-outline" href={mailto}>Υπέβαλε διόρθωση/απάντηση</a>
+      <a class="button-outline" href={correctionFormUrl}>Υπέβαλε διόρθωση/απάντηση</a>
     </div>
   </div>
 
