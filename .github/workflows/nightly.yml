@@ -73,10 +73,22 @@ jobs:
         # κρεμασμένο backfill χτυπά το job-level 120min και ΔΕΝ γίνεται ποτέ
         # build/deploy -- η fail-soft πολιτική ακυρωνόταν ακριβώς στο σενάριο
         # που σχεδιάστηκε να καλύπτει.
+        # Session 31 finding: το audit πέρασμα ήλεγχε ΟΛΟ το ιστορικό (78 μήνες ×
+        # 4 entities = 312 σειριακά HTTP requests) κάθε βράδυ, παρότι κλεισμένοι
+        # μήνες του ΚΗΜΔΗΣ δεν αλλάζουν ποτέ (επιβεβαιωμένο εμπειρικά). Default
+        # audit είναι πλέον μόνο οι τελευταίοι 3 κλεισμένοι μήνες + το failures
+        # manifest· --full-audit τρέχει μόνο Κυριακή σαν δίχτυ ασφαλείας για
+        # καθυστερημένες αναρτήσεις σε παλιότερους μήνες.
         id: backfill
         timeout-minutes: 60
         continue-on-error: true
-        run: python scripts/backfill_historical.py --start-year 2020 --entities auction contract notice payment
+        run: |
+          FULL_AUDIT_FLAG=""
+          if [ "$(date -u +%u)" = "7" ]; then
+            echo "Κυριακή -- πλήρες audit πέρασμα (--full-audit)"
+            FULL_AUDIT_FLAG="--full-audit"
+          fi
+          python scripts/backfill_historical.py --start-year 2020 --entities auction contract notice payment $FULL_AUDIT_FLAG
 
       - name: Backfill failure warning
         # #4 (CHECK 2026-07-11): χωρίς ρητό annotation το continue-on-error
