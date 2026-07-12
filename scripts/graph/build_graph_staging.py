@@ -198,6 +198,18 @@ def build(
     ]
     months_over_threshold = [m["month"] for m in months_quality if m["over_threshold"]]
 
+    # source_year/source_month: το ΙΔΙΟ κριτήριο "year" με το production
+    # pipeline (kimdis_data.py::flatten -- _source_year από το filename,
+    # "πιο αξιόπιστο" από το signedDate). Bug βρέθηκε στο P2-05 verify: το
+    # ego-network sanity check (ΥΠΕΘΑ 2020) έδειχνε 0€ επειδή το _signed_date
+    # (πεδίο πηγής, καθυστερεί συχνά χρόνια μετά την ανάθεση) ΔΕΝ ταυτίζεται
+    # με το production "year" -- το ίδιο ΑΦΜ έχει 3,3 δις€ το 2020 στο
+    # indicators.json (source_year) αλλά 0 εγγραφές με signedDate.year=2020.
+    # Χωρίς αυτό, ΚΑΘΕ μελλοντικό ανά-έτος graph query (Query C club effect,
+    # sanity checks) θα συγκρίνει διαφορετικές έννοιες "έτους".
+    df["_source_year"] = df["_month_key"].str.extract(r":(\d{4})-\d{2}$").astype(int)
+    df["_source_month"] = df["_month_key"].str.extract(r":(\d{4}-\d{2})$")
+
     awards = df[df["_org_vat"].notna() & df["referenceNumber"].notna()].copy()
     awards = awards.drop_duplicates(subset=["referenceNumber"])
 
@@ -240,6 +252,8 @@ def build(
         "adam:ID(Award)": awards["referenceNumber"],
         "amount_ex_vat:double": awards["_amount"],
         "date:date": awards["_signed_date"].dt.strftime("%Y-%m-%d"),
+        "source_year:long": awards["_source_year"],
+        "source_month:string": awards["_source_month"],
         "cancelled:boolean": cancelled_bool,
     })
     awards_out.to_csv(staging_dir / "awards.csv", index=False, encoding="utf-8-sig")
