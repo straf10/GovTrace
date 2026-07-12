@@ -15,6 +15,7 @@ interface Props {
   caveat: string;
   coverageNote?: string | null;
   insufficientData?: boolean;
+  periodLabel?: string | null;
 }
 
 const {
@@ -31,6 +32,7 @@ const {
   caveat,
   coverageNote = null,
   insufficientData = false,
+  periodLabel = null,
 } = Astro.props;
 
 function fmt(v: number | null): string {
@@ -57,7 +59,7 @@ const strip = hist ? distributionStripSvg(hist, latestValue) : null;
     <>
       <p class="indicator-value">
         {fmt(latestValue)}
-        <span class="indicator-meta"> · N={latestN} · {latestYear}</span>
+        <span class="indicator-meta"> · N={latestN} · {periodLabel ?? latestYear}</span>
       </p>
       {coverageNote && <p class="indicator-coverage">{coverageNote}</p>}
       <div class="indicator-charts">

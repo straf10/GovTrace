@@ -31,6 +31,7 @@ PUBLISHED_CSVS = [
     "indicator_discount_rate.csv",
     "indicator_deadlines.csv",
     "indicator_composite.csv",
+    "indicator_benford.csv",
 ]
 
 COMPLETENESS_ENTITIES = ["auction", "contract", "notice", "payment"]
@@ -96,6 +97,7 @@ def merge_indicators() -> list[dict]:
     dr = read_csv_or_empty("indicator_discount_rate.csv")
     dl = read_csv_or_empty("indicator_deadlines.csv")
     comp = read_csv_or_empty("indicator_composite.csv")
+    benford = read_csv_or_empty("indicator_benford.csv")
 
     if da.empty:
         return []
@@ -143,6 +145,13 @@ def merge_indicators() -> list[dict]:
             on=["vat", "year"],
             how="left",
         )
+    if not benford.empty:
+        benford_yearly = benford[benford["period"] != "all"].copy()
+        benford_yearly["year"] = benford_yearly["period"].astype(int)
+        benford_yearly = benford_yearly.rename(columns={"coverage_pct": "benford_coverage_pct"})[
+            ["vat", "year", "n_amounts", "mad_d1", "nigrini_band_d1", "mad_d2", "nigrini_band_d2", "benford_coverage_pct"]
+        ]
+        merged = merged.merge(benford_yearly, on=["vat", "year"], how="left")
     if not entities.empty:
         merged = merged.merge(
             entities[["vat", "org_type", "nuts_city"]],

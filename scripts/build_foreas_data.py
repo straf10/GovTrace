@@ -361,6 +361,7 @@ def attach_indicators(
     dr: pd.DataFrame,
     dl: pd.DataFrame,
     comp: pd.DataFrame,
+    benford: pd.DataFrame,
     percentiles: dict,
     group_of: pd.Series,
     entities: pd.DataFrame,
@@ -371,6 +372,7 @@ def attach_indicators(
     dr_by_vat = {vat: g for vat, g in dr.groupby("organization_vat")} if not dr.empty else {}
     dl_by_vat = {vat: g for vat, g in dl.groupby("vat")} if not dl.empty else {}
     comp_by_vat = {vat: g for vat, g in comp.groupby("vat")} if not comp.empty else {}
+    benford_by_vat = {vat: g for vat, g in benford.groupby("vat")} if not benford.empty else {}
     ent_by_vat = entities.set_index("vat") if not entities.empty else pd.DataFrame()
 
     for vat, page in pages.items():
@@ -434,6 +436,21 @@ def attach_indicators(
                 str(int(r["year"])): {"value": r["composite_score"], "n": int(r["n_flags"])}
                 for _, r in comp_by_vat[vat].iterrows()
             }
+        if vat in benford_by_vat:
+            # period="all" καλύπτει φορείς που δεν πιάνουν N=300 σε κανένα
+            # μεμονωμένο έτος -- fallback για την κάρτα, βλ. SPRINT_E_PLAN §E6.
+            indicators["benford"] = {
+                str(r["period"]): {
+                    "value": r["mad_d1"],
+                    "n": int(r["n_amounts"]),
+                    "band": r["nigrini_band_d1"],
+                    "mad_d2": r["mad_d2"],
+                    "band_d2": r["nigrini_band_d2"],
+                    "coverage_pct": r["coverage_pct"],
+                    "insufficient_data": pd.isna(r["mad_d1"]),
+                }
+                for _, r in benford_by_vat[vat].iterrows()
+            }
 
         page["indicators"] = indicators
         page["percentiles"] = percentiles.get(vat, {})
@@ -474,6 +491,7 @@ def main() -> None:
     dr = read_csv_or_empty("indicator_discount_rate.csv")
     dl = read_csv_or_empty("indicator_deadlines.csv")
     comp = read_csv_or_empty("indicator_composite.csv")
+    benford = read_csv_or_empty("indicator_benford.csv")
 
     if da.empty or entities.empty:
         print("Λείπουν data/processed/entities.csv ή indicator_direct_award.csv -- τρέξε πρώτα "
@@ -501,7 +519,7 @@ def main() -> None:
               "Χτίζεται προσωρινός resolver μόνο από auctions -- λιγότερο πλήρης.)")
         resolver = build_vat_resolver([auctions])
     pages = build_foreas_facts(auctions, resolver)
-    attach_indicators(pages, da, hhi, sb, dr, dl, comp, percentiles, group_of, entities)
+    attach_indicators(pages, da, hhi, sb, dr, dl, comp, benford, percentiles, group_of, entities)
 
     pages = sanitize(pages)
     distributions = sanitize(distributions)

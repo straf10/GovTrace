@@ -73,6 +73,32 @@ const discount = indicatorInput("discount");
 const deadline = indicatorInput("deadline");
 const composite = indicatorInput("composite");
 
+// Benford: δύο επίπεδα περιόδου (έτος + "all"), όχι το ίδιο σχήμα με τους
+// υπόλοιπους δείκτες -- προτιμάται το πιο πρόσφατο έτος με N>=300, αλλιώς
+// fallback στο "all" (SPRINT_E_PLAN §E6, ώστε η κάρτα να έχει νόημα και σε
+// μεσαίους φορείς που δεν πιάνουν N=300 σε κανένα μεμονωμένο έτος).
+const benfordSeries = page.indicators?.benford ?? {};
+const benfordYearEntry = [...years].reverse()
+  .map((y) => ({ year: y, entry: benfordSeries[String(y)] }))
+  .find((r) => r.entry && !r.entry.insufficient_data);
+const benfordAllEntry = benfordSeries["all"];
+const benford = benfordYearEntry?.entry
+  ? { latest: benfordYearEntry.entry, periodLabel: String(benfordYearEntry.year) }
+  : benfordAllEntry && !benfordAllEntry.insufficient_data
+    ? { latest: benfordAllEntry, periodLabel: "όλη η περίοδος" }
+    : { latest: null, periodLabel: null };
+const nigriniLabels: Record<string, string> = {
+  close: "εντός τυπικών ορίων Nigrini (close)",
+  acceptable: "εντός τυπικών ορίων Nigrini (acceptable)",
+  marginal: "οριακά εκτός τυπικών ορίων Nigrini (marginal)",
+  nonconformity: "εκτός τυπικών ορίων Nigrini (nonconformity)",
+};
+const benfordBandLabel = benford.latest?.band ? (nigriniLabels[benford.latest.band] ?? benford.latest.band) : null;
+const benfordPoints = years.map((y) => {
+  const entry = benfordSeries[String(y)];
+  return { year: y, value: entry && !entry.insufficient_data ? entry.value : null };
+});
+
 const correctionFormUrl = `/diorthoseis/?vat=${encodeURIComponent(vat ?? "")}&name=${encodeURIComponent(page.name ?? "")}#form`;
 
 // S3 (audit): validate ADAM format before building the URL -- ο ΑΔΑΜ μπαίνει
@@ -246,6 +272,22 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
         hist={composite.hist}
         percentile={composite.percentile}
         caveat="Διαβάζεται μόνο μαζί με τα επιμέρους flags και τα N τους· δεν είναι αυτοτελής κατάταξη νομιμότητας."
+      />
+      <IndicatorCard
+        title="Έλεγχος Benford (κατανομή ψηφίων)"
+        info="Μέση απόλυτη απόκλιση (MAD) της κατανομής του 1ου ψηφίου των ποσών πληρωμών από την αναμενόμενη κατανομή Benford, με τα κατώφλια Nigrini. Ελάχιστο N=300 έγκυρα ποσά."
+        defLink="/deiktes/benford/"
+        latestValue={benford.latest?.value ?? null}
+        latestYear={null}
+        periodLabel={benford.periodLabel}
+        latestN={benford.latest?.n ?? null}
+        valueFormat="raw"
+        points={benfordPoints}
+        hist={null}
+        percentile={null}
+        insufficientData={!benford.latest}
+        coverageNote={benford.latest ? `Ζώνη Nigrini: ${benfordBandLabel} · Κάλυψη εγκυρότητας ποσών: ${benford.latest.coverage_pct ?? "—"}%` : null}
+        caveat="Δευτερεύον στατιστικό σήμα, ποτέ μόνο του -- θεσμικά κατώφλια (π.χ. όρια απευθείας ανάθεσης) παράγουν φυσιολογικές αποκλίσεις από την κατανομή Benford."
       />
     </div>
   </section>
