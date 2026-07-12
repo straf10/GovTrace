@@ -24,7 +24,7 @@ const statusLabel = {
   <section class="definition-grid">
     <div class="definition-card">
       <h2>Φόρμουλα</h2>
-      <p><code>{indicator.formula}</code></p>
+      <p class="formula-block"><code>{indicator.formula}</code></p>
       <p class="muted">{indicator.nRule}</p>
     </div>
     <div class="definition-card">
@@ -70,4 +70,17 @@ const statusLabel = {
   }
   .definition-card h2 { margin-top: 0; }
   .muted { color: var(--muted); }
+  .formula-block {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.9rem 1rem;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .formula-block code {
+    font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+    font-size: 1.05rem;
+    white-space: pre-wrap;
+  }
 </style>
