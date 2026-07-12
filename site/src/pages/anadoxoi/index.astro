@@ -1,0 +1,123 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+<Base title="Ανάδοχοι" description="Κατάλογος αναδόχων δημοσίων συμβάσεων -- πλήθος αναθέσεων και συνολική αξία.">
+  <h1>Ανάδοχοι δημοσίων συμβάσεων</h1>
+  <p class="subtitle">
+    Κατάλογος νομικών προσώπων που έχουν αναλάβει δημόσιες συμβάσεις (ΚΗΜΔΗΣ).
+    Δεν εμφανίζονται φυσικά πρόσωπα -- βλ. <a href="/apopoiisi/">αρχή ελαχιστοποίησης δεδομένων</a>.
+    Το φίλτρο νομικής μορφής είναι προσωρινό heuristic (όνομα-βασισμένο) εν αναμονή ΓΕΜΗ.
+  </p>
+
+  <div class="controls">
+    <input id="search" type="text" placeholder="Αναζήτηση αναδόχου..." />
+    <span id="status">Φόρτωση δεδομένων...</span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="anadoxoi-table">
+      <thead>
+        <tr>
+          <th data-key="name">Ανάδοχος</th>
+          <th data-key="n_awards">N αναθέσεων</th>
+          <th data-key="value_total">Συνολική αξία (χωρίς ΦΠΑ)</th>
+          <th data-key="first_year">Πρώτο έτος</th>
+          <th data-key="last_year">Τελευταίο έτος</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</Base>
+
+<script>
+  type Rec = { vat: string; name: string; n_awards: number; value_total: number; first_year: number; last_year: number };
+
+  const state: { records: Rec[]; sortKey: keyof Rec; sortDir: number } = {
+    records: [],
+    sortKey: "value_total",
+    sortDir: -1,
+  };
+
+  // Ονόματα αναδόχων προέρχονται από ΚΗΜΔΗΣ (δεδομένα τρίτων, μη ελεγχόμενα) --
+  // ίδιο escaping pattern με /foreis/ (site/src/pages/foreis/index.astro) πριν
+  // μπουν σε innerHTML.
+  function esc(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  const nf = new Intl.NumberFormat("el-GR", { maximumFractionDigits: 0 });
+  const eur = (v: number) => `${nf.format(v)} €`;
+
+  function applyFilters(): Rec[] {
+    const q = (document.getElementById("search") as HTMLInputElement).value.trim().toLowerCase();
+    if (!q) return state.records;
+    return state.records.filter((r) => r.name.toLowerCase().includes(q));
+  }
+
+  function render() {
+    let rows = applyFilters();
+    rows = rows.slice().sort((a, b) => {
+      const av = a[state.sortKey];
+      const bv = b[state.sortKey];
+      if (av < bv) return -1 * state.sortDir;
+      if (av > bv) return 1 * state.sortDir;
+      return 0;
+    });
+
+    const body = document.getElementById("table-body")!;
+    body.innerHTML = rows
+      .slice(0, 500)
+      .map((r) => `
+        <tr>
+          <td data-label="Ανάδοχος">${esc(r.name)}</td>
+          <td data-label="N αναθέσεων">${nf.format(r.n_awards)}</td>
+          <td data-label="Συνολική αξία">${eur(r.value_total)}</td>
+          <td data-label="Πρώτο έτος">${r.first_year}</td>
+          <td data-label="Τελευταίο έτος">${r.last_year}</td>
+        </tr>`)
+      .join("");
+
+    document.getElementById("status")!.textContent = `${rows.length} ανάδοχοι (εμφανίζονται έως 500)`;
+  }
+
+  function attachSorting() {
+    document.querySelectorAll("th[data-key]").forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = (th as HTMLElement).dataset.key as keyof Rec;
+        if (state.sortKey === key) state.sortDir *= -1;
+        else { state.sortKey = key; state.sortDir = 1; }
+        render();
+      });
+    });
+  }
+
+  async function main() {
+    attachSorting();
+    document.getElementById("search")!.addEventListener("input", render);
+    try {
+      const res = await fetch("/data/anadoxoi-slim.json");
+      const payload = await res.json() as { columns: string[]; rows: unknown[][] };
+      state.records = payload.rows.map((row) => Object.fromEntries(payload.columns.map((c, i) => [c, row[i]]))) as Rec[];
+      render();
+    } catch (err) {
+      document.getElementById("status")!.textContent = "Σφάλμα φόρτωσης δεδομένων.";
+    }
+  }
+
+  main();
+</script>
+
+<style>
+  .controls { display: flex; gap: 0.75rem; align-items: center; margin-block: 1rem; }
+  .controls input { flex: 1; max-width: 320px; border: 1px solid var(--border); border-radius: var(--radius-sm, 4px); padding: 0.45rem 0.6rem; background: var(--surface); color: var(--text); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+  th[data-key] { cursor: pointer; user-select: none; }
+</style>
