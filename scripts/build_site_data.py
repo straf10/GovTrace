@@ -174,18 +174,26 @@ def has_valid_cpv(raw: object) -> bool:
 
 
 def build_completeness_report() -> dict:
-    frames = []
+    # #21-style OOM fix (session 30, CHECK-audit precedent στο build_foreas_data.py):
+    # με το payment (3,9M γραμμές) στο COMPLETENESS_ENTITIES, το κράτημα ΟΛΩΝ των
+    # raw entity DataFrames (frames[]) ταυτόχρονα ΚΑΙ του pd.concat() τους σκότωσε
+    # τον GitHub Actions runner (nightly.yml, session 30 πρώτο δοκιμαστικό run).
+    # Λύση: κρατάμε μόνο το συμπαγές boolean "work" DataFrame ανά entity (χωρίς τις
+    # ογκώδεις πρωτότυπες στήλες όπως objectDetailsList) και το raw df ελευθερώνεται
+    # πριν φορτωθεί το επόμενο entity.
+    work_frames = []
     by_entity = []
     for entity in COMPLETENESS_ENTITIES:
         df = load_entity(entity, columns=COMPLETENESS_COLS)
         if df.empty:
             continue
-        df["entity"] = entity
-        frames.append(df)
-        by_entity.append(_completeness_rows(df, entity))
+        work = _completeness_work(df, entity)
+        del df
+        work_frames.append(work)
+        by_entity.append(_rows_from_work(work, entity))
 
-    rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    by_year = _completeness_rows(rows, "all") if not rows.empty else []
+    all_work = pd.concat(work_frames, ignore_index=True) if work_frames else pd.DataFrame()
+    by_year = _rows_from_work(all_work, "all") if not all_work.empty else []
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "permanent_auction_gaps": [
@@ -197,17 +205,14 @@ def build_completeness_report() -> dict:
     }
 
 
-def _completeness_rows(df: pd.DataFrame, entity: str) -> list[dict]:
-    if df.empty:
-        return []
-
+def _completeness_work(df: pd.DataFrame, entity: str) -> pd.DataFrame:
     vat_norm = df["organizationVatNumber"].map(normalize_vat)
     value = sanitize_value(
         pd.to_numeric(df.get("totalCostWithoutVAT"), errors="coerce")
         .fillna(pd.to_numeric(df.get("totalCostWithVAT"), errors="coerce"))
         .fillna(pd.to_numeric(df.get("budget"), errors="coerce"))
     )
-    work = pd.DataFrame(
+    return pd.DataFrame(
         {
             "year": df["_source_year"],
             "entity": entity,
@@ -217,6 +222,11 @@ def _completeness_rows(df: pd.DataFrame, entity: str) -> list[dict]:
             "amount_valid": value.notna() & (value > 0),
         }
     )
+
+
+def _rows_from_work(work: pd.DataFrame, entity: str) -> list[dict]:
+    if work.empty:
+        return []
 
     rows = []
     for year, g in work.groupby("year"):
