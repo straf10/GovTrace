@@ -63,7 +63,6 @@ docs/
   UI_UX_SPEC_FINAL.md        # Per-page UI/UX spec & design decisions
   NEO4J_INTEGRATION_FINAL.md # Graph analytics strategy (Φάση 2, offline)
   RESEARCH_RESULTS.md        # ΚΗΜΔΗΣ API research & findings
-  tech_report.md             # Technical audit (2026-07-09) & fix plan
   MEMORY.md                  # Per-session project log & current state
 ```
 
@@ -82,7 +81,6 @@ See `docs/` folder for:
 - **MASTERPLAN_ELLADA_3.0_2026-07.md** — consolidated masterplan & checkpoint definitions (start here)
 - **SPRINTS_DETAILED.md** — week-by-week sprint breakdown
 - **UI_UX_SPEC_FINAL.md** — site structure & UI/UX decisions
-- **tech_report.md** — technical audit & fix plan
 - **MEMORY.md** — per-session project log (current state)
 
 ## 🔗 Data source
