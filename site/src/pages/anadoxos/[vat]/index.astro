@@ -1,0 +1,125 @@
+---
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import Base from "../../../layouts/Base.astro";
+
+// Ίδιο πρότυπο με site/src/pages/foreas/[vat]/index.astro: το heavy JSON
+// διαβάζεται ΜΟΝΟ μέσα στο getStaticPaths (μία φορά), όχι στο module-level
+// frontmatter (που τρέχει ξανά ανά σελίδα). Μόνο top-N (<=5.000, βλ.
+// scripts/build_anadoxos_profiles.py) έχουν εγγραφή εδώ -- P2-16/R-01.
+export async function getStaticPaths() {
+  const DATA_DIR = join(process.cwd(), "src", "data");
+  const pages: Record<string, any> = JSON.parse(readFileSync(join(DATA_DIR, "anadoxos_pages.json"), "utf-8"));
+  return Object.keys(pages).map((vat) => ({
+    params: { vat },
+    props: { page: pages[vat] },
+  }));
+}
+
+interface Props {
+  page: any;
+}
+
+const { vat } = Astro.params;
+const { page } = Astro.props as Props;
+
+const nf = new Intl.NumberFormat("el-GR", { maximumFractionDigits: 0 });
+const eur = (v: number | null) => (v === null || v === undefined ? "—" : `${nf.format(v)} €`);
+
+const years: number[] = page.years ?? [];
+
+const ADAM_RE = /^\d{2}(REQ|PROC|AWRD|SYMV|PAY)\d+$/;
+const isValidAdam = (adam: unknown): adam is string => typeof adam === "string" && ADAM_RE.test(adam);
+const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-opendata/auction/attachment/${encodeURIComponent(adam)}`;
+---
+<Base title={page.name ?? vat} description={`Αναθέσεις που έχει αναλάβει ${page.name ?? vat} (ΑΦΜ ${vat}) σε δημόσιες συμβάσεις.`}>
+  <div class="anadoxos-header">
+    <div>
+      <h1>{page.name ?? "Άγνωστος ανάδοχος"}</h1>
+      <p class="subtitle">
+        Ανάδοχος δημοσίων συμβάσεων · ΑΦΜ {vat}
+        {years.length > 0 && <> · Κάλυψη δεδομένων {years[0]}–{years[years.length - 1]}</>}
+      </p>
+    </div>
+    <a class="button-outline" href="/anadoxoi/">← Πίσω στον κατάλογο αναδόχων</a>
+  </div>
+
+  <section class="stat-tiles">
+    <div class="stat-tile"><div class="value">{eur(page.value_total)}</div><div class="label">Συνολική αξία (χωρίς ΦΠΑ)</div></div>
+    <div class="stat-tile"><div class="value">{nf.format(page.n_awards ?? 0)}</div><div class="label">Πλήθος αναθέσεων</div></div>
+  </section>
+
+  {page.top_orgs?.length > 0 && (
+    <div class="table-block">
+      <h2>Από ποιους φορείς</h2>
+      <table class="plain-table">
+        <thead><tr><th>Φορέας</th><th>Αξία</th><th>Μερίδιο</th></tr></thead>
+        <tbody>
+          {page.top_orgs.map((o: any) => (
+            <tr>
+              <td>{o.vat ? <a href={`/foreas/${o.vat}/`}>{o.name}</a> : (o.name ?? "—")}</td>
+              <td>{eur(o.value)}</td>
+              <td>{o.share !== null ? `${o.share}%` : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  {page.recent?.length > 0 && (
+    <section>
+      <h2>Πρόσφατες αναθέσεις</h2>
+      <div class="table-wrap">
+        <table class="plain-table">
+          <thead>
+            <tr><th>Ημερομηνία</th><th>Τίτλος</th><th>Φορέας</th><th>Ποσό (με ΦΠΑ)</th><th>Διαδικασία</th><th>ΑΔΑΜ</th></tr>
+          </thead>
+          <tbody>
+            {page.recent.map((r: any) => (
+              <tr>
+                <td>{r.date}</td>
+                <td>{r.title}</td>
+                <td>{r.org_vat ? <a href={`/foreas/${r.org_vat}/`}>{r.org_name ?? r.org_vat}</a> : (r.org_name ?? "—")}</td>
+                <td>{eur(r.amount_with_vat)}</td>
+                <td>{r.procedure}</td>
+                <td>{isValidAdam(r.adam) ? <a href={adamUrl(r.adam)} target="_blank" rel="noopener">{r.adam}</a> : (r.adam ?? "—")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+</Base>
+
+<style>
+  .anadoxos-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .button-outline {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    text-decoration: none;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .stat-tiles { display: flex; gap: 1rem; flex-wrap: wrap; margin-block: 1.25rem; }
+  .stat-tile {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 4px);
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    min-width: 180px;
+  }
+  .stat-tile .value { font-size: 1.4rem; font-weight: 600; }
+  .stat-tile .label { color: var(--muted); font-size: 0.82rem; }
+  .table-block { margin-block: 1.5rem; }
+  .plain-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  .plain-table th, .plain-table td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+</style>

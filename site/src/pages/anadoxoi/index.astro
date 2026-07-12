@@ -39,6 +39,10 @@ import Base from "../../layouts/Base.astro";
     sortDir: -1,
   };
 
+  // P2-16: μόνο οι top-N ανάδοχοι (βλ. scripts/build_anadoxos_profiles.py)
+  // έχουν δικό τους /anadoxos/<vat>/ -- οι υπόλοιποι μένουν χωρίς link εδώ.
+  let profiledVats = new Set<string>();
+
   // Ονόματα αναδόχων προέρχονται από ΚΗΜΔΗΣ (δεδομένα τρίτων, μη ελεγχόμενα) --
   // ίδιο escaping pattern με /foreis/ (site/src/pages/foreis/index.astro) πριν
   // μπουν σε innerHTML.
@@ -75,7 +79,7 @@ import Base from "../../layouts/Base.astro";
       .slice(0, 500)
       .map((r) => `
         <tr>
-          <td data-label="Ανάδοχος">${esc(r.name)}</td>
+          <td data-label="Ανάδοχος">${profiledVats.has(r.vat) ? `<a href="/anadoxos/${encodeURIComponent(r.vat)}/">${esc(r.name)}</a>` : esc(r.name)}</td>
           <td data-label="N αναθέσεων">${nf.format(r.n_awards)}</td>
           <td data-label="Συνολική αξία">${eur(r.value_total)}</td>
           <td data-label="Πρώτο έτος">${r.first_year}</td>
@@ -101,9 +105,18 @@ import Base from "../../layouts/Base.astro";
     attachSorting();
     document.getElementById("search")!.addEventListener("input", render);
     try {
-      const res = await fetch("/data/anadoxoi-slim.json");
+      const [res, profileRes] = await Promise.all([
+        fetch("/data/anadoxoi-slim.json"),
+        fetch("/data/anadoxos-index.json"),
+      ]);
       const payload = await res.json() as { columns: string[]; rows: unknown[][] };
       state.records = payload.rows.map((row) => Object.fromEntries(payload.columns.map((c, i) => [c, row[i]]))) as Rec[];
+      try {
+        const profiled = await profileRes.json() as string[];
+        profiledVats = new Set(profiled);
+      } catch {
+        profiledVats = new Set();
+      }
       render();
     } catch (err) {
       document.getElementById("status")!.textContent = "Σφάλμα φόρτωσης δεδομένων.";
