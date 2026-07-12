@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -302,6 +303,13 @@ def build(
     rel_awards_to.to_csv(staging_dir / "rel_awards_to.csv", index=False, encoding="utf-8-sig")
 
     qa_report = {
+        # P2-07: ημερομηνία αυτού του staging build -- η ΜΟΝΑΔΙΚΗ πηγή αλήθειας
+        # για το snapshot_date που εμφανίζεται σε site/κάρτες δικτύου. Κάθε
+        # κατάντη export (GDS, Queries A-D) διαβάζει το ΙΔΙΟ πεδίο μέσω
+        # scripts/graph/snapshot.py::read_snapshot_date() -- ΔΕΝ ξαναγράφει
+        # δικό του "τώρα", ώστε exports από την ίδια φόρτωση γράφου να
+        # δείχνουν πάντα το ίδιο snapshot date στο site (βλ. R-06 / P2-07).
+        "snapshot_date": date.today().isoformat(),
         "months": months,
         "months_found": months_found,
         "months_missing": months_missing,
