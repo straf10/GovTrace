@@ -36,6 +36,39 @@
   }
 }
 
+/* D19: χειροκίνητο toggle (Header.astro) -- τα [data-theme] attribute
+   selectors έχουν μεγαλύτερη specificity από το :root μέσα στο media query
+   παραπάνω, άρα υπερισχύουν ανεξάρτητα από το prefers-color-scheme. */
+:root[data-theme="dark"] {
+  /* color-scheme αναγκάζει τα Canvas/CanvasText system colors (--surface/--text
+     παραπάνω) και τα native form controls να ακολουθήσουν το χειροκίνητο toggle
+     αντί για το prefers-color-scheme -- χωρίς αυτό, --surface/--text θα έμεναν
+     κολλημένα στο σχήμα του OS. */
+  color-scheme: dark;
+  --border: #334155;
+  --muted: #94a3b8;
+  --accent: #93c5fd;
+  --accent-strong: #bfdbfe;
+  --accent-soft: #1e293b;
+  --on-accent-soft: #dbeafe;
+  --badge-bg: #334155;
+  --error: #fca5a5;
+  --panel: color-mix(in srgb, Canvas 92%, var(--accent) 8%);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --border: #d7dee8;
+  --muted: #5f6f86;
+  --accent: #1f5fbf;
+  --accent-strong: #164a96;
+  --accent-soft: #eef5ff;
+  --on-accent-soft: #1e293b;
+  --badge-bg: #e2e8f0;
+  --error: #b42318;
+  --panel: color-mix(in srgb, Canvas 96%, var(--accent) 4%);
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -111,6 +144,18 @@ header.site-header .inner {
   background: var(--surface);
   color: var(--text);
 }
+
+.theme-toggle {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
 .search-results {
   position: absolute;

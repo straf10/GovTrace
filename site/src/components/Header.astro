@@ -38,6 +38,9 @@ function isCurrent(href: string) {
       />
       <div id="global-search-results" class="search-results" role="listbox" hidden></div>
     </form>
+    <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Εναλλαγή θέματος (σκούρο/φωτεινό/σύστημα)">
+      <span id="theme-toggle-label">Θέμα: Σύστημα</span>
+    </button>
   </div>
 </header>
 
@@ -133,4 +136,39 @@ function isCurrent(href: string) {
   }
 
   initGlobalSearch();
+
+  // D19: τρίτη κατάσταση "σύστημα" (καμία localStorage τιμή -- ακολουθεί
+  // prefers-color-scheme). Κύκλος: σύστημα -> σκούρο -> φωτεινό -> σύστημα.
+  const THEME_LABELS: Record<string, string> = {
+    system: "Θέμα: Σύστημα",
+    dark: "Θέμα: Σκούρο",
+    light: "Θέμα: Φωτεινό",
+  };
+  const THEME_ORDER = ["system", "dark", "light"] as const;
+
+  function currentTheme(): "system" | "dark" | "light" {
+    const stored = localStorage.getItem("theme");
+    return stored === "dark" || stored === "light" ? stored : "system";
+  }
+
+  function applyTheme(theme: "system" | "dark" | "light") {
+    if (theme === "system") {
+      document.documentElement.removeAttribute("data-theme");
+      localStorage.removeItem("theme");
+    } else {
+      document.documentElement.setAttribute("data-theme", theme);
+      localStorage.setItem("theme", theme);
+    }
+    const label = document.getElementById("theme-toggle-label");
+    if (label) label.textContent = THEME_LABELS[theme];
+  }
+
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    applyTheme(currentTheme());
+    themeToggle.addEventListener("click", () => {
+      const next = THEME_ORDER[(THEME_ORDER.indexOf(currentTheme()) + 1) % THEME_ORDER.length];
+      applyTheme(next);
+    });
+  }
 </script>
