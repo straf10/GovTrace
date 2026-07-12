@@ -18,19 +18,29 @@ export async function getStaticPaths() {
   const DATA_DIR = join(process.cwd(), "src", "data");
   const pages: Record<string, any> = JSON.parse(readFileSync(join(DATA_DIR, "foreas_pages.json"), "utf-8"));
   const distributions: Record<string, any> = JSON.parse(readFileSync(join(DATA_DIR, "distributions.json"), "utf-8"));
+  // P2-17: γείτονες δικτύου συνδέονται σε /anadoxos/<vat>/ ΜΟΝΟ αν ο ανάδοχος
+  // είναι μέσα στα top-N προφίλ (P2-16, βλ. R-01) -- αλλιώς broken link (404).
+  let anadoxosVats: string[] = [];
+  try {
+    anadoxosVats = JSON.parse(readFileSync(join(process.cwd(), "public", "data", "anadoxos-index.json"), "utf-8"));
+  } catch {
+    anadoxosVats = [];
+  }
   return Object.keys(pages).map((vat) => ({
     params: { vat },
-    props: { page: pages[vat], distributions },
+    props: { page: pages[vat], distributions, anadoxosVats },
   }));
 }
 
 interface Props {
   page: any;
   distributions: Record<string, any>;
+  anadoxosVats: string[];
 }
 
 const { vat } = Astro.params;
-const { page, distributions } = Astro.props as Props;
+const { page, distributions, anadoxosVats } = Astro.props as Props;
+const profiledVats = new Set(anadoxosVats);
 
 const nf = new Intl.NumberFormat("el-GR", { maximumFractionDigits: 0 });
 const eur = (v: number | null) => (v === null || v === undefined ? "—" : `${nf.format(v)} €`);
@@ -291,6 +301,58 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
       />
     </div>
   </section>
+
+  {page.network && (
+    <section>
+      <h2>Δίκτυο</h2>
+      <p class="subtitle">
+        Δομική ανάλυση δικτύου φορέα-αναδόχων πάνω στο ίδιο ΚΗΜΔΗΣ dataset —{" "}
+        <a href="/methodologia/#410-δείκτες-δικτύου">δείτε τους περιορισμούς πριν ερμηνεύσετε</a>.
+        Δεν αποδεικνύει ούτε υπονοεί συμφωνία μεταξύ φορέα και αναδόχου.
+      </p>
+      <p class="muted">Δεδομένα δικτύου: snapshot {page.network.snapshot_date ?? "άγνωστο"} (offline, χειροκίνητη ανανέωση περιοδικά).</p>
+
+      {(() => {
+        const years = Object.keys(page.network.new_winner_rate ?? {}).sort();
+        const latestNwrYear = years.length ? years[years.length - 1] : null;
+        const latestNwr = latestNwrYear ? page.network.new_winner_rate[latestNwrYear] : null;
+        return latestNwr ? (
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="value">{latestNwr.value}%</div>
+              <div class="label">Ρυθμός νέων αναδόχων</div>
+              <div class="period">N={latestNwr.n} · {latestNwrYear}</div>
+            </div>
+          </div>
+        ) : (
+          <p class="badge-missing">Ανεπαρκή δεδομένα για ρυθμό νέων αναδόχων</p>
+        );
+      })()}
+
+      {page.network.top_neighbors?.length > 0 ? (
+        <div class="table-block">
+          <h3>Top γείτονες (ego-network, top-30)</h3>
+          <div class="table-wrap">
+            <table class="plain-table">
+              <thead><tr><th>Ανάδοχος</th><th>Αξία</th><th>Ν αναθέσεων</th><th>Μερίδιο</th></tr></thead>
+              <tbody>
+                {page.network.top_neighbors.map((n: any) => (
+                  <tr>
+                    <td>{n.vat && profiledVats.has(n.vat) ? <a href={`/anadoxos/${n.vat}/`}>{n.name ?? n.vat}</a> : (n.name ?? "—")}</td>
+                    <td>{eur(n.value)}</td>
+                    <td>{nf.format(n.n_awards)}</td>
+                    <td>{n.share !== null && n.share !== undefined ? `${n.share}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <p class="badge-missing">Ανεπαρκή δεδομένα για γείτονες δικτύου</p>
+      )}
+    </section>
+  )}
 
   {page.replies?.length > 0 && (
     <section>

@@ -31,7 +31,13 @@ from typing import Iterator, Protocol
 
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
-DIR_MAP = {"raw": RAW_DIR, "processed": PROCESSED_DIR}
+GRAPH_DIR = Path("data/graph_staging/gds")
+# "graph": τα exports του scripts/graph/queries.py (ego_networks.json,
+# graph_features_*.csv) -- ο ίδιος ο γράφος Neo4j είναι offline/χειροκίνητος
+# (R-06), αλλά αυτά τα μικρά derived αρχεία πρέπει να φτάνουν στο nightly CI
+# runner (που δεν έχει καθόλου πρόσβαση σε Neo4j) ώστε το build_foreas_data.py
+# να μπορεί να ενώσει την κάρτα "Δίκτυο" (P2-17) και εκεί.
+DIR_MAP = {"raw": RAW_DIR, "processed": PROCESSED_DIR, "graph": GRAPH_DIR}
 DEFAULT_BUCKET = "ellada30-data"
 
 

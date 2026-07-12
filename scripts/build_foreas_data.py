@@ -50,6 +50,7 @@ SITE_DIR = PROCESSED_DIR.parent.parent / "site"
 BUILD_DATA_DIR = SITE_DIR / "src" / "data"   # build-time only, ΟΧΙ deployed
 PUBLIC_DATA_DIR = SITE_DIR / "public" / "data"
 REPLIES_DIR = PROCESSED_DIR.parent.parent / "replies"  # P2-13, tracked, βλ. replies/README.md
+GRAPH_DIR = PROCESSED_DIR.parent / "graph_staging" / "gds"  # P2-11/P2-17, gitignored, offline/χειροκίνητο
 
 TOP_N_CPV = 10
 TOP_N_CONTRACTORS = 10
@@ -500,6 +501,43 @@ def attach_replies(pages: dict, replies_dir: Path = REPLIES_DIR) -> None:
         pages[vat]["replies"] = reply_data.get("replies", [])
 
 
+def attach_network(pages: dict, graph_dir: Path = GRAPH_DIR) -> None:
+    """P2-11/P2-17: κάρτα «Δίκτυο» -- top-30 ego-network γείτονες + new-winner-rate
+    ανά φορέα, από τα offline exports του scripts/graph/queries.py (P2-08..11).
+
+    Ο γράφος είναι χειροκίνητος/offline (ΔΕΝ ανανεώνεται από το nightly, βλ.
+    docs/PHASE_2.md R-06) -- αν τα αρχεία λείπουν (π.χ. CI χωρίς Neo4j τοπικά),
+    ΔΕΝ σκάει το build· απλά κανένα page δεν παίρνει πεδίο "network" και η
+    κάρτα «Δίκτυο» δεν εμφανίζεται (βλ. P2-12 blocking gate -- η κάρτα ούτως ή
+    άλλως δεν έπρεπε να υπάρχει αν δεν υπάρχουν δεδομένα)."""
+    ego_path = graph_dir / "ego_networks.json"
+    nwr_path = graph_dir / "graph_features_org.csv"
+    if not ego_path.exists():
+        return
+    ego = json.loads(ego_path.read_text(encoding="utf-8"))
+    snapshot_date = ego.get("snapshot_date")
+    networks = ego.get("networks", {})
+
+    nwr_by_org: dict[str, dict] = {}
+    if nwr_path.exists():
+        nwr = pd.read_csv(nwr_path, dtype={"org_vat": str})
+        for vat, g in nwr.groupby("org_vat"):
+            nwr_by_org[vat] = {
+                str(int(r["year"])): {"value": round(100.0 * r["new_winner_rate"], 1), "n": int(r["n_contractors"])}
+                for _, r in g.iterrows()
+            }
+
+    for vat, page in pages.items():
+        neighbors = networks.get(vat)
+        if neighbors is None and vat not in nwr_by_org:
+            continue
+        page["network"] = {
+            "snapshot_date": snapshot_date,
+            "top_neighbors": neighbors or [],
+            "new_winner_rate": nwr_by_org.get(vat, {}),
+        }
+
+
 def main() -> None:
     BUILD_DATA_DIR.mkdir(parents=True, exist_ok=True)
     PUBLIC_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -541,6 +579,7 @@ def main() -> None:
     pages = build_foreas_facts(auctions, resolver)
     attach_indicators(pages, da, hhi, sb, dr, dl, comp, benford, percentiles, group_of, entities)
     attach_replies(pages)
+    attach_network(pages)
 
     pages = sanitize(pages)
     distributions = sanitize(distributions)

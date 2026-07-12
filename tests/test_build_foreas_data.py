@@ -1,9 +1,10 @@
+import json
 import math
 
 import numpy as np
 import pandas as pd
 
-from build_foreas_data import attach_indicators, sanitize
+from build_foreas_data import attach_indicators, attach_network, sanitize
 
 
 def _empty(cols):
@@ -66,3 +67,40 @@ def test_attach_indicators_benford_carries_both_period_levels():
     assert result["2024"]["value"] == 0.006
     assert result["2024"]["insufficient_data"] is False
     assert result["all"]["insufficient_data"] is True
+
+
+def test_attach_network_wires_ego_neighbors_and_new_winner_rate(tmp_path):
+    # P2-11/P2-17: το graph_staging/gds είναι offline/χειροκίνητο (βλ.
+    # docs/PHASE_2.md R-06) -- ελέγχουμε ότι τα δύο exports του
+    # scripts/graph/queries.py ενώνονται σωστά ανά ΑΦΜ φορέα.
+    graph_dir = tmp_path / "gds"
+    graph_dir.mkdir()
+    ego = {
+        "snapshot_date": "2026-07-12",
+        "top_n": 30,
+        "networks": {
+            "090153025": [{"vat": "099755631", "name": "ΑΝΑΔΟΧΟΣ Α", "value": 1000.0, "n_awards": 2, "share": 50.0}],
+        },
+    }
+    (graph_dir / "ego_networks.json").write_text(json.dumps(ego), encoding="utf-8")
+    nwr = pd.DataFrame([
+        {"org_vat": "090153025", "year": 2024, "n_contractors": 100, "n_new_contractors": 30, "new_winner_rate": 0.3},
+        {"org_vat": "090153025", "year": 2025, "n_contractors": 90, "n_new_contractors": 20, "new_winner_rate": 0.2222},
+    ])
+    nwr.to_csv(graph_dir / "graph_features_org.csv", index=False)
+
+    pages = {"090153025": {}, "999999999": {}}
+    attach_network(pages, graph_dir=graph_dir)
+
+    net = pages["090153025"]["network"]
+    assert net["snapshot_date"] == "2026-07-12"
+    assert net["top_neighbors"][0]["vat"] == "099755631"
+    assert net["new_winner_rate"]["2025"] == {"value": 22.2, "n": 90}
+    # φορέας χωρίς εγγραφή στο δίκτυο δεν παίρνει καθόλου το πεδίο (όχι κενό/None)
+    assert "network" not in pages["999999999"]
+
+
+def test_attach_network_no_op_when_graph_exports_missing(tmp_path):
+    pages = {"090153025": {}}
+    attach_network(pages, graph_dir=tmp_path / "does-not-exist")
+    assert "network" not in pages["090153025"]

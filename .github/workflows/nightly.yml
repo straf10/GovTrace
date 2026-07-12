@@ -63,7 +63,10 @@ jobs:
         run: pip install -r requirements.lock
 
       - name: R2 pull (data/raw, data/processed)
-        run: python scripts/r2_sync.py pull
+        run: python scripts/r2_sync.py pull --prefix raw --prefix processed
+
+      - name: R2 pull (graph exports -- P2-17, ο γράφος Neo4j είναι offline/χειροκίνητος, R-06)
+        run: python scripts/r2_sync.py pull --prefix graph
 
       - name: Backfill (νέος κλεισμένος μήνας + retry αποτυχιών)
         # ΡΗΤΑ entities (όχι το default του script) -- payment προστέθηκε
