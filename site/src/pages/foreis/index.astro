@@ -22,12 +22,9 @@ const columns = [
 
   <div class="controls">
     <input id="search" type="text" placeholder="Αναζήτηση φορέα..." />
-    <select id="year-filter" aria-label="Φίλτρο έτους">
-      <option value="latest">Τελευταίο διαθέσιμο έτος ανά φορέα</option>
-      <option value="all">Όλα τα έτη</option>
-    </select>
     <span id="status">Φόρτωση δεδομένων...</span>
   </div>
+  <p class="subtitle">Ο πίνακας δείχνει το τελευταίο διαθέσιμο έτος ανά φορέα (P2-01 — ελαφρύ αρχείο). Για πλήρες ιστορικό ανά έτος δείτε το προφίλ του φορέα.</p>
 
   <section id="compare-panel" class="compare-panel" hidden></section>
   <section id="group-summary" class="group-summary" aria-live="polite"></section>
@@ -52,12 +49,11 @@ const columns = [
 <script>
   type Rec = Record<string, string | number | null>;
 
-  const state: { records: Rec[]; sortKey: string; sortDir: number; group: string | null; year: string; selected: Set<string> } = {
+  const state: { records: Rec[]; sortKey: string; sortDir: number; group: string | null; selected: Set<string> } = {
     records: [],
     sortKey: "n_total",
     sortDir: -1,
     group: null,
-    year: "latest",
     selected: new Set(),
   };
 
@@ -114,28 +110,12 @@ const columns = [
     return medians;
   }
 
-  function latestRows(records: Rec[]): Rec[] {
-    const best = new Map<string, Rec>();
-    for (const r of records) {
-      const vat = String(r.vat || "");
-      if (!vat) continue;
-      const prev = best.get(vat);
-      if (!prev || Number(r.year || 0) > Number(prev.year || 0)) best.set(vat, r);
-    }
-    return Array.from(best.values());
-  }
-
   function applyFilters(): Rec[] {
     const q = (document.getElementById("search") as HTMLInputElement).value.trim().toLowerCase();
     let rows = state.records;
 
     if (state.group && GROUP_MATCHERS[state.group]) {
       rows = rows.filter((r) => GROUP_MATCHERS[state.group as string](String(r.org_type || "")));
-    }
-    if (state.year === "latest") {
-      rows = latestRows(rows);
-    } else if (state.year !== "all") {
-      rows = rows.filter((r) => String(r.year) === state.year);
     }
     if (q) {
       rows = rows.filter((r) => String(r.name || "").toLowerCase().includes(q));
@@ -195,7 +175,7 @@ const columns = [
       .join("");
 
     document.getElementById("status")!.textContent =
-      `${rows.length} γραμμές φορέα/έτους (εμφανίζονται έως 500) · ▲ = άνω του εθνικού διαμέσου`;
+      `${rows.length} φορείς (εμφανίζονται έως 500) · ▲ = άνω του εθνικού διαμέσου`;
     attachCompareChecks();
     renderCompare(rows);
     renderGroupSummary(rows);
@@ -224,7 +204,7 @@ const columns = [
   function renderCompare(rows: Rec[]) {
     const panel = document.getElementById("compare-panel")!;
     const selectedRows = Array.from(state.selected)
-      .map((vat) => rows.find((r) => r.vat === vat) || latestRows(state.records.filter((r) => r.vat === vat))[0])
+      .map((vat) => rows.find((r) => r.vat === vat) || state.records.find((r) => r.vat === vat))
       .filter(Boolean) as Rec[];
     panel.hidden = selectedRows.length === 0;
     if (!selectedRows.length) {
@@ -300,23 +280,11 @@ const columns = [
     if (group) state.group = group;
 
     document.getElementById("search")!.addEventListener("input", render);
-    document.getElementById("year-filter")!.addEventListener("change", (event) => {
-      state.year = (event.target as HTMLSelectElement).value;
-      render();
-    });
 
     try {
-      const res = await fetch("/data/indicators.json");
+      const res = await fetch("/data/indicators-slim.json");
       const payload = await res.json();
       state.records = payload.records;
-      const years = Array.from(new Set(state.records.map((r) => String(r.year)))).sort();
-      const yearSelect = document.getElementById("year-filter") as HTMLSelectElement;
-      for (const year of years) {
-        const opt = document.createElement("option");
-        opt.value = year;
-        opt.textContent = year;
-        yearSelect.append(opt);
-      }
       render();
     } catch (err) {
       document.getElementById("status")!.textContent =

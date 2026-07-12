@@ -266,6 +266,31 @@ def _rows_from_work(work: pd.DataFrame, entity: str) -> list[dict]:
 # στα CSV του data/processed/).
 MIN_N_TOTAL_FOR_SITE = 5
 
+# P2-01 (Φάση 2, session 34): πεδία που χρειάζεται ΜΟΝΟ ο πίνακας /foreis/
+# (client-side fetch). Το πλήρες indicators.json (όλα τα πεδία, όλα τα έτη)
+# παραμένει για build-time χρήση (index.astro) + λήψη στο /dedomena/ -- δεν
+# χρειάζεται ποτέ να κατέβει στον browser σαν σύνολο.
+SLIM_FIELDS = [
+    "vat", "name", "org_type", "nuts_city", "year", "n_total", "value_total",
+    "da_count_pct", "da_value_pct", "hhi", "median_discount_pct",
+    "single_bid_pct", "composite_score",
+]
+
+
+def build_slim_indicators(records: list[dict]) -> list[dict]:
+    """Μόνο το τελευταίο διαθέσιμο έτος ανά ΑΦΜ (βλ. R-03/P2-01): το πλήρες
+    per-year ιστορικό ζει ήδη στα pre-rendered /foreas/<vat>/, δεν χρειάζεται
+    να κουβαλιέται στον client-side πίνακα του /foreis/."""
+    latest: dict[str, dict] = {}
+    for r in records:
+        vat = r.get("vat")
+        if not vat:
+            continue
+        prev = latest.get(vat)
+        if prev is None or (r.get("year") or 0) > (prev.get("year") or 0):
+            latest[vat] = r
+    return [{k: r.get(k) for k in SLIM_FIELDS} for r in latest.values()]
+
 
 def main() -> None:
     SITE_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -281,6 +306,17 @@ def main() -> None:
     out_path = SITE_DATA_DIR / "indicators.json"
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=None), encoding="utf-8")
     print(f"Site data -> {out_path} ({len(records)} rows)".encode("ascii", "replace").decode("ascii"))
+
+    slim_records = build_slim_indicators(records)
+    slim_payload = {
+        "generated_at": payload["generated_at"],
+        "data_coverage_month": payload["data_coverage_month"],
+        "n_organizations": len(slim_records),
+        "records": slim_records,
+    }
+    slim_path = SITE_DATA_DIR / "indicators-slim.json"
+    slim_path.write_text(json.dumps(slim_payload, ensure_ascii=False, indent=None), encoding="utf-8")
+    print(f"Slim site data -> {slim_path} ({len(slim_records)} rows)".encode("ascii", "replace").decode("ascii"))
 
     completeness = build_completeness_report()
     completeness_path = SITE_DATA_DIR / "completeness_report.json"
