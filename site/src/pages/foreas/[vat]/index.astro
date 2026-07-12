@@ -292,6 +292,26 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
     </div>
   </section>
 
+  {page.replies?.length > 0 && (
+    <section>
+      <h2>Δικαίωμα απάντησης</h2>
+      <p class="muted">
+        Απαντήσεις/εξηγήσεις που κατέθεσε ο φορέας, δημοσιευμένες αυτούσιες
+        (βλ. <a href="/apopoiisi/">δικαίωμα απάντησης</a>).
+      </p>
+      {page.replies.map((r: any) => (
+        <div class="reply-card">
+          <div class="reply-meta">
+            <span>{r.date}</span>
+            {r.sender_role && <span> · {r.sender_role}</span>}
+            {r.indicator && <span> · δείκτης: {r.indicator}</span>}
+          </div>
+          <p class="reply-text">{r.text}</p>
+        </div>
+      ))}
+    </section>
+  )}
+
   {page.recent?.length > 0 && (
     <section>
       <h2>Πρόσφατες αναθέσεις</h2>
@@ -412,6 +432,15 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
     white-space: nowrap;
   }
   .chart-panel { margin-block: 1.5rem; }
+  .reply-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 4px);
+    padding: 0.85rem 1rem;
+    margin-block: 0.75rem;
+    background: var(--surface);
+  }
+  .reply-meta { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.4rem; }
+  .reply-text { white-space: pre-wrap; margin: 0; }
   .table-block { margin-block: 1.5rem; }
   .plain-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
   .plain-table th, .plain-table td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }

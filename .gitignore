@@ -6,6 +6,9 @@ __pycache__/
 
 # Data (απόφαση 2026-07-09 #8, tech_report.md §8): τα data μένουν εκτός git
 # προς το παρόν -- το data build τρέχει τοπικά πριν από κάθε deploy.
+# (P2-13: το δικαίωμα απάντησης ΔΕΝ μπαίνει εδώ -- git δεν επιτρέπει
+# re-include μέσα σε ήδη αποκλεισμένο parent directory. Ζει στο /replies/
+# top-level, tracked, βλ. replies/README.md.)
 /data/
 
 # F2 (tech_report.md §9): build output του site (JSON δεδομένων), κατά λάθος

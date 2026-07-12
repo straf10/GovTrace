@@ -41,6 +41,7 @@ from kimdis_data import (
     VALUE_SANITY_CAP,
     build_vat_resolver,
     load_vat_resolver,
+    normalize_vat,
     resolve_vat,
     sanitize_value,
 )
@@ -48,6 +49,7 @@ from kimdis_data import (
 SITE_DIR = PROCESSED_DIR.parent.parent / "site"
 BUILD_DATA_DIR = SITE_DIR / "src" / "data"   # build-time only, ΟΧΙ deployed
 PUBLIC_DATA_DIR = SITE_DIR / "public" / "data"
+REPLIES_DIR = PROCESSED_DIR.parent.parent / "replies"  # P2-13, tracked, βλ. replies/README.md
 
 TOP_N_CPV = 10
 TOP_N_CONTRACTORS = 10
@@ -480,6 +482,24 @@ def sanitize(obj):
     return obj
 
 
+def attach_replies(pages: dict, replies_dir: Path = REPLIES_DIR) -> None:
+    """P2-13: ενσωματώνει replies/<ΑΦΜ>.json (χειροκίνητα επιμελημένο, tracked
+    -- βλ. replies/README.md) στο αντίστοιχο page. ΔΕΝ σιωπά αν ένα reply
+    αναφέρεται σε ΑΦΜ που δεν υπάρχει στα pages -- warning, ώστε να μην χαθεί
+    αθόρυβα μια απάντηση φορέα."""
+    if not replies_dir.exists():
+        return
+    for path in sorted(replies_dir.glob("*.json")):
+        if path.name.startswith("_"):
+            continue
+        reply_data = json.loads(path.read_text(encoding="utf-8"))
+        vat = normalize_vat(reply_data.get("vat") or path.stem)
+        if vat not in pages:
+            print(f"ΠΡΟΣΟΧΗ: replies/{path.name} αναφέρεται σε ΑΦΜ {vat} που δεν υπάρχει στα foreas_pages -- αγνοείται.")
+            continue
+        pages[vat]["replies"] = reply_data.get("replies", [])
+
+
 def main() -> None:
     BUILD_DATA_DIR.mkdir(parents=True, exist_ok=True)
     PUBLIC_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -520,6 +540,7 @@ def main() -> None:
         resolver = build_vat_resolver([auctions])
     pages = build_foreas_facts(auctions, resolver)
     attach_indicators(pages, da, hhi, sb, dr, dl, comp, benford, percentiles, group_of, entities)
+    attach_replies(pages)
 
     pages = sanitize(pages)
     distributions = sanitize(distributions)
