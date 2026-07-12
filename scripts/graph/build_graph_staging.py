@@ -70,47 +70,49 @@ def load_months(
             for missing in AUCTION_COLUMNS:
                 if missing not in df.columns:
                     df[missing] = None
+            # R-05 (PHASE_2.md, P2-04): το kill-switch πρέπει να εφαρμόζεται
+            # ΑΝΑ ΜΗΝΑ, όχι σαν ένα global ποσοστό σε 78 μήνες -- ένας κακός
+            # μήνας δεν πρέπει να αραιωθεί μέσα σε 6 χρόνια καλής ποιότητας.
+            df["_month_key"] = f"{entity}:{year}-{int(mm):02d}"
             frames.append(df)
     if not frames:
-        return pd.DataFrame(columns=AUCTION_COLUMNS), months_found, months_missing
+        return pd.DataFrame(columns=[*AUCTION_COLUMNS, "_month_key"]), months_found, months_missing
     return pd.concat(frames, ignore_index=True), months_found, months_missing
 
 
-def first_member(raw: str | None, failures: list | None = None) -> dict | None:
+def first_member(raw: str | None) -> tuple[dict | None, bool]:
     # Κενό πεδίο (None/NaN από parquet) ΔΕΝ είναι parse failure -- μόνο
     # string που αποτυγχάνει στο json.loads μετράει ως σκουπίδι.
     if not isinstance(raw, str) or not raw:
-        return None
+        return None, False
     try:
         members = json.loads(raw)
     except json.JSONDecodeError:
         # #11 (CHECK 2026-07-11): οι JSON parse αποτυχίες μετρώνται πλέον
-        # (πριν χάνονταν αόρατα ως κανονικά κενά).
-        if failures is not None:
-            failures.append(1)
-        return None
+        # (πριν χάνονταν αόρατα ως κανονικά κενά). Επιστρέφεται ανά-γραμμή
+        # flag (όχι mutable list ουράς) ώστε το P2-04 per-month kill-switch
+        # να μπορεί να τις ομαδοποιήσει.
+        return None, True
     if not isinstance(members, list) or not members:
-        return None
+        return None, False
     m = members[0]
-    return m if isinstance(m, dict) else None
+    return (m if isinstance(m, dict) else None), False
 
 
-def first_cpv(raw: str | None, failures: list | None = None) -> str | None:
+def first_cpv(raw: str | None) -> tuple[str | None, bool]:
     if not isinstance(raw, str) or not raw:
-        return None
+        return None, False
     try:
         items = json.loads(raw)
     except json.JSONDecodeError:
-        if failures is not None:
-            failures.append(1)
-        return None
+        return None, True
     if not isinstance(items, list) or not items:
-        return None
+        return None, False
     cpvs = items[0].get("cpvs") if isinstance(items[0], dict) else None
     if not isinstance(cpvs, list) or not cpvs:
-        return None
+        return None, False
     first = cpvs[0]
-    return first.get("key") if isinstance(first, dict) else None
+    return (first.get("key") if isinstance(first, dict) else None), False
 
 
 def build(
@@ -134,13 +136,17 @@ def build(
     missing_org_vat = df["_org_vat"].isna()
     if missing_org_vat.any():
         df.loc[missing_org_vat, "_org_vat"] = df.loc[missing_org_vat, "organization.value"].map(resolver)
+    df["_org_vat_failed"] = df["_org_vat"].isna() & df["organizationVatNumber"].notna()
 
-    member_json_failures: list = []
-    cpv_json_failures: list = []
-    df["_member"] = df[MEMBERS_COL].map(lambda raw: first_member(raw, member_json_failures))
+    member_results = df[MEMBERS_COL].map(first_member)
+    df["_member"] = member_results.map(lambda t: t[0])
+    df["_member_json_failed"] = member_results.map(lambda t: t[1])
     df["_contractor_vat"] = df["_member"].map(lambda m: normalize_vat(m.get("vatNumber")) if m and isinstance(m.get("vatNumber"), str) else None)
     df["_contractor_name"] = df["_member"].map(lambda m: (m.get("name") or "").strip() if m else None)
-    df["_cpv"] = df[CPV_COL].map(lambda raw: first_cpv(raw, cpv_json_failures))
+
+    cpv_results = df[CPV_COL].map(first_cpv)
+    df["_cpv"] = cpv_results.map(lambda t: t[0])
+    df["_cpv_json_failed"] = cpv_results.map(lambda t: t[1])
 
     # #9 (CHECK 2026-07-11): ΙΔΙΟ sanitization με το production pipeline
     # (τιμές > 10 δισ. = γνωστά σκουπίδια πηγής, μηδενίζονται) + ρητό
@@ -154,16 +160,43 @@ def build(
     # zero-padding στα Windows. Implausible έτη (<1900) μηδενίζονται σε NaT και
     # μετράνε ως parse failure -- ίδιος κανόνας με τα υπόλοιπα σκουπίδια πηγής.
     df["_signed_date"] = pd.to_datetime(df["signedDate"], errors="coerce")
-    n_date_failures = int((df["_signed_date"].notna() & (df["_signed_date"].dt.year < 1900)).sum())
-    df.loc[df["_signed_date"].dt.year < 1900, "_signed_date"] = pd.NaT
+    df["_date_failed"] = df["_signed_date"].notna() & (df["_signed_date"].dt.year < 1900)
+    df.loc[df["_date_failed"], "_signed_date"] = pd.NaT
 
     # #11: οι JSON parse αποτυχίες (members/CPV) μπαίνουν στο ίδιο kill-switch
     # κατώφλι με τις αποτυχίες κανονικοποίησης ΑΦΜ φορέα.
-    n_org_vat_failures = int((df["_org_vat"].isna() & df["organizationVatNumber"].notna()).sum())
-    n_member_json_failures = len(member_json_failures)
-    n_cpv_json_failures = len(cpv_json_failures)
+    n_org_vat_failures = int(df["_org_vat_failed"].sum())
+    n_member_json_failures = int(df["_member_json_failed"].sum())
+    n_cpv_json_failures = int(df["_cpv_json_failed"].sum())
+    n_date_failures = int(df["_date_failed"].sum())
     n_parse_failures = n_org_vat_failures + n_member_json_failures + n_cpv_json_failures + n_date_failures
     parse_failure_pct = n_parse_failures / n_total if n_total else 0.0
+
+    # R-05 (PHASE_2.md, P2-04): kill-switch ΑΝΑ ΜΗΝΑ αντί για ένα global
+    # ποσοστό σε όλο το εύρος 2020-2026 -- ένας κακός μήνας δεν πρέπει να
+    # αραιωθεί μέσα σε 78 καλούς, ούτε ένα καλό σύνολο να κρύψει έναν κακό μήνα.
+    df["_n_row_failures"] = (
+        df["_org_vat_failed"].astype(int)
+        + df["_member_json_failed"].astype(int)
+        + df["_cpv_json_failed"].astype(int)
+        + df["_date_failed"].astype(int)
+    )
+    by_month = df.groupby("_month_key").agg(
+        n_rows=("_n_row_failures", "size"),
+        n_failures=("_n_row_failures", "sum"),
+    )
+    by_month["parse_failure_pct"] = by_month["n_failures"] / by_month["n_rows"]
+    months_quality = [
+        {
+            "month": key,
+            "n_rows": int(row.n_rows),
+            "n_failures": int(row.n_failures),
+            "parse_failure_pct": round(100 * row.parse_failure_pct, 4),
+            "over_threshold": bool(row.parse_failure_pct > PARSE_FAILURE_THRESHOLD),
+        }
+        for key, row in by_month.iterrows()
+    ]
+    months_over_threshold = [m["month"] for m in months_quality if m["over_threshold"]]
 
     awards = df[df["_org_vat"].notna() & df["referenceNumber"].notna()].copy()
     awards = awards.drop_duplicates(subset=["referenceNumber"])
@@ -271,6 +304,8 @@ def build(
         "n_cpv_json_failures": n_cpv_json_failures,
         "n_date_failures": n_date_failures,
         "parse_failure_pct": round(100 * parse_failure_pct, 4),
+        "months_quality": months_quality,
+        "months_over_threshold": months_over_threshold,
         "pct_org_vat_resolved": round(100 * df["_org_vat"].notna().mean(), 2) if n_total else 0.0,
         "pct_contractor_vat_resolved": round(100 * df["_contractor_vat"].notna().mean(), 2) if n_total else 0.0,
         "pct_cpv_present": round(100 * df["_cpv"].notna().mean(), 2) if n_total else 0.0,
@@ -278,9 +313,10 @@ def build(
     with open(staging_dir / "qa_report.json", "w", encoding="utf-8") as fh:
         json.dump(qa_report, fh, ensure_ascii=False, indent=2)
 
-    if parse_failure_pct > PARSE_FAILURE_THRESHOLD:
+    if months_over_threshold:
         raise SystemExit(
-            f"ΑΠΟΤΥΧΙΑ: parse_failure_pct={parse_failure_pct:.4%} > {PARSE_FAILURE_THRESHOLD:.2%} -- βλ. qa_report.json"
+            f"ΑΠΟΤΥΧΙΑ: {len(months_over_threshold)} μήνας/ες πάνω από {PARSE_FAILURE_THRESHOLD:.2%} "
+            f"parse_failure_pct: {months_over_threshold} -- βλ. qa_report.json (months_quality)"
         )
     return qa_report
 
