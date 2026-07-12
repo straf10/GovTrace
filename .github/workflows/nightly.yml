@@ -13,16 +13,18 @@ name: Nightly refresh (R2 pull -> backfill -> pipeline -> build -> deploy -> R2 
 # βλ. session 23 gotcha).
 
 on:
-  # ΠΡΟΣΩΡΙΝΑ ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ cron (CHECK 2026-07-11, ευρήματα #1/#21):
-  # (α) E3 payment backfill: ✅ ΟΛΟΚΛΗΡΩΘΗΚΕ (session 30, 78/78 μήνες) -- το
-  #     `payment` πλέον μπαίνει στο flag του backfill step παρακάτω·
-  # (β) η διόρθωση OOM του build_foreas_data.py (#21) πρέπει ακόμα να
-  #     επιβεβαιωθεί με 2 δοκιμαστικά workflow_dispatch runs στον runner
-  #     (με το payment πλέον στο backfill flag -- δεν έχει τρέξει ποτέ
-  #     dispatch με αυτό το μέγεθος raw data).
-  # Επαναφορά: ξε-σχολίασε το block ΜΕΤΑ από 2 πράσινα dispatch runs.
-  # schedule:
-  #   - cron: "30 3 * * *" # 03:30 UTC ~= 06:30 Ελλάδας, εκτός ωρών αιχμής ΚΗΜΔΗΣ
+  # E2 cron ΕΝΕΡΓΟΠΟΙΗΘΗΚΕ 2026-07-12 (session 32) μετά από 2 πράσινα
+  # workflow_dispatch runs στον πραγματικό runner, με payment πλέον στο
+  # backfill flag και τη διόρθωση OOM #21 του build_foreas_data.py:
+  #   run 29186677715 (commit 9d364bc) -- πλήρες end-to-end, deploy+verify OK.
+  #   run 29188512801 (commit ff7743e) -- δοκίμασε το νέο 3μηνο audit window
+  #     του backfill· Backfill step 25,5' (10:07:55->10:33:26 UTC), σαφώς
+  #     μικρότερο από τα 49,5' του run 1 -- επιβεβαιώνει ότι το audit window
+  #     δεν ξανακατεβάζει όλο το ιστορικό. Pipeline/build/deploy πέτυχαν.
+  # Παρακολούθηση 3 συνεχόμενων πράσινων νυχτών ακόμα εκκρεμεί (πρώτη νύχτα
+  # 2026-07-13 03:30 UTC) -- βλ. docs/MEMORY.md.
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC ~= 06:30 Ελλάδας, εκτός ωρών αιχμής ΚΗΜΔΗΣ
   workflow_dispatch:
 
 concurrency:
