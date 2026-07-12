@@ -33,7 +33,7 @@ PUBLISHED_CSVS = [
     "indicator_composite.csv",
 ]
 
-COMPLETENESS_ENTITIES = ["auction", "contract", "notice"]
+COMPLETENESS_ENTITIES = ["auction", "contract", "notice", "payment"]
 COMPLETENESS_COLS = [
     "organizationVatNumber",
     "objectDetailsList",
