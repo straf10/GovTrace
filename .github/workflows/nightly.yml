@@ -14,12 +14,13 @@ name: Nightly refresh (R2 pull -> backfill -> pipeline -> build -> deploy -> R2 
 
 on:
   # ΠΡΟΣΩΡΙΝΑ ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΟ cron (CHECK 2026-07-11, ευρήματα #1/#21):
-  # (α) το E3 payment backfill τρέχει τοπικά με 300 req/min -- ταυτόχρονο
-  #     nightly fetch θα ξεπερνούσε το όριο ΚΗΜΔΗΣ (SPRINT_E_PLAN §E3)·
-  # (β) η διόρθωση OOM του build_foreas_data.py (#21) πρέπει πρώτα να
-  #     επιβεβαιωθεί με 2 δοκιμαστικά workflow_dispatch runs στον runner.
-  # Επαναφορά: ξε-σχολίασε το block ΜΕΤΑ την ολοκλήρωση του E3 και 2
-  # πράσινα dispatch runs.
+  # (α) E3 payment backfill: ✅ ΟΛΟΚΛΗΡΩΘΗΚΕ (session 30, 78/78 μήνες) -- το
+  #     `payment` πλέον μπαίνει στο flag του backfill step παρακάτω·
+  # (β) η διόρθωση OOM του build_foreas_data.py (#21) πρέπει ακόμα να
+  #     επιβεβαιωθεί με 2 δοκιμαστικά workflow_dispatch runs στον runner
+  #     (με το payment πλέον στο backfill flag -- δεν έχει τρέξει ποτέ
+  #     dispatch με αυτό το μέγεθος raw data).
+  # Επαναφορά: ξε-σχολίασε το block ΜΕΤΑ από 2 πράσινα dispatch runs.
   # schedule:
   #   - cron: "30 3 * * *" # 03:30 UTC ~= 06:30 Ελλάδας, εκτός ωρών αιχμής ΚΗΜΔΗΣ
   workflow_dispatch:
@@ -63,8 +64,8 @@ jobs:
         run: python scripts/r2_sync.py pull
 
       - name: Backfill (νέος κλεισμένος μήνας + retry αποτυχιών)
-        # ΡΗΤΑ entities (όχι το default του script) -- payment δεν έχει μπει
-        # ακόμα (εκκρεμεί E3)· θα προστεθεί στο flag μόλις κλείσει το gate.
+        # ΡΗΤΑ entities (όχι το default του script) -- payment προστέθηκε
+        # session 30 μετά την ολοκλήρωση του E3 backfill gate (78/78 μήνες).
         # continue-on-error: γνωστά server-side timeouts ΚΗΜΔΗΣ (fail-soft
         # πολιτική -- το site ξαναχτίζεται με ό,τι raw υπάρχει, ΠΟΤΕ με
         # μερικό μήνα, εγγύηση του _backfill_failures.json manifest).
@@ -75,7 +76,7 @@ jobs:
         id: backfill
         timeout-minutes: 60
         continue-on-error: true
-        run: python scripts/backfill_historical.py --start-year 2020 --entities auction contract notice
+        run: python scripts/backfill_historical.py --start-year 2020 --entities auction contract notice payment
 
       - name: Backfill failure warning
         # #4 (CHECK 2026-07-11): χωρίς ρητό annotation το continue-on-error
