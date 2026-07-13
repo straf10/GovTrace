@@ -117,11 +117,21 @@ def histogram(values: pd.Series, n_bins: int = N_HIST_BINS) -> dict:
     }
 
 
-def percentile_of(value: float, values: pd.Series) -> float | None:
-    vals = values.dropna().to_numpy(dtype=float)
-    if len(vals) < MIN_GROUP_YEAR_FOR_PERCENTILE or pd.isna(value):
-        return None
-    return round(100.0 * float((vals <= value).mean()), 1)
+def percentiles_within_group(values: pd.Series) -> pd.Series:
+    """L9 (review.md): επιστρέφει, για κάθε τιμή της στήλης, το ποσοστό
+    (0-100) των τιμών της ΙΔΙΑΣ ομάδας <= αυτής. Πριν, το `percentile_of`
+    ξανάκανε `dropna().to_numpy()` για ΚΑΘΕ γραμμή μέσα σε iterrows -- O(n^2)
+    ανά (year, group). Εδώ το sort γίνεται μία φορά ανά ομάδα και το ranking
+    κάθε τιμής βγαίνει με `searchsorted` (O(n log n) συνολικά)."""
+    vals = values.to_numpy(dtype=float)
+    valid = ~np.isnan(vals)
+    n = int(valid.sum())
+    result = np.full(len(vals), np.nan)
+    if n >= MIN_GROUP_YEAR_FOR_PERCENTILE:
+        sorted_vals = np.sort(vals[valid])
+        ranks = np.searchsorted(sorted_vals, vals[valid], side="right")
+        result[valid] = np.round(100.0 * ranks / n, 1)
+    return pd.Series(result, index=values.index)
 
 
 def build_groups_distributions_percentiles(
@@ -155,9 +165,9 @@ def build_groups_distributions_percentiles(
             dist_key = f"{key}|{grp}|{year}"
             distributions[dist_key] = histogram(g[value_col])
         for (year, grp), g in d.groupby(["year", "group"]):
-            for _, row in g.iterrows():
-                vat = row[vat_col]
-                pct = percentile_of(row[value_col], g[value_col])
+            pcts = percentiles_within_group(g[value_col])
+            for vat, pct in zip(g[vat_col], pcts):
+                pct = None if pd.isna(pct) else float(pct)
                 percentiles.setdefault(vat, {}).setdefault(key, {})[str(int(year))] = pct
 
     return group_of, distributions, percentiles
@@ -212,7 +222,16 @@ def _first_contractor(raw: str | None) -> tuple[str, str] | None:
 HEAVY_JSON_COLS = ["objectDetailsList", "contractingDataDetails.contractingMembersDataList"]
 
 
-def load_auctions_slim(raw_dir=RAW_DIR) -> pd.DataFrame:
+# L8 (review.md): build_foreas_data.py, build_anadoxoi_data.py και
+# build_anadoxos_profiles.py καλούν όλα load_auctions_slim() στο ΙΔΙΟ nightly
+# Pipeline step -- χωρίς cache, ξαναδιαβάζεται 3x το ίδιο ~1,7M-γραμμών
+# ιστορικό (76 parquet, JSON parsing ανά αρχείο). Το cache ζει ΕΚΤΟΣ
+# data/raw|processed|graph ώστε να ΜΗΝ synced στο R2 (ίδιος λόγος με L4/L5 --
+# είναι καθαρά ενδο-run artifact, όχι δεδομένο προς διανομή/διατήρηση).
+AUCTIONS_SLIM_CACHE = Path("data/_cache/auctions_slim.parquet")
+
+
+def load_auctions_slim(raw_dir=RAW_DIR, cache_path: Path | None = AUCTIONS_SLIM_CACHE) -> pd.DataFrame:
     """Φορτώνει το auction ιστορικό ΑΝΑ αρχείο, εξάγει αμέσως τις slim στήλες
     (cpv_code/cpv_label/contractor_vat/contractor_name -- strings, όχι tuples)
     και πετάει τις raw JSON στήλες πριν το concat.
@@ -222,10 +241,22 @@ def load_auctions_slim(raw_dir=RAW_DIR) -> pd.DataFrame:
     από το filename, dedupe referenceNumber στο τέλος), αλλά το concat γίνεται
     πάνω στο slim σχήμα: peak μνήμης ~= 1 μήνας raw + slim ιστορικό, αντί για
     raw JSON x όλο το ιστορικό (#21).
+
+    cache_path (L8): αν δίνεται και το parquet υπάρχει με mtime >= όλων των
+    raw auction αρχείων, διαβάζεται απευθείας αντί να ξαναϋπολογιστεί -- έτσι
+    οι επόμενες κλήσεις μέσα στο ίδιο nightly run (build_anadoxoi_data.py,
+    build_anadoxos_profiles.py) δεν ξαναπερνούν όλο το raw ιστορικό. Ένα
+    φρέσκο backfill (νεότερα raw αρχεία) ακυρώνει αυτόματα το cache.
     """
     files = sorted(raw_dir.glob("auction_*.parquet"))
     if not files:
         return pd.DataFrame()
+
+    if cache_path is not None and cache_path.exists():
+        cache_mtime = cache_path.stat().st_mtime
+        if all(f.stat().st_mtime <= cache_mtime for f in files):
+            return pd.read_parquet(cache_path)
+
     frames = []
     for f in files:
         available = set(pq.ParquetFile(f).schema_arrow.names)
@@ -253,6 +284,9 @@ def load_auctions_slim(raw_dir=RAW_DIR) -> pd.DataFrame:
     dup_mask = ref.notna() & ref.duplicated(keep="last")
     if dup_mask.any():
         result = result[~dup_mask]
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        result.to_parquet(cache_path, index=False)
     return result
 
 
@@ -325,20 +359,22 @@ def build_foreas_facts(auctions: pd.DataFrame, resolver: pd.Series) -> dict:
             .sort_values("submission_date", ascending=False)
             .head(RECENT_N)
         )
+        # L3 (review.md): coerce μία φορά πριν το iterrows -- raw KIMDIS στήλη
+        # έχει αποδεδειγμένα string junk σε άλλα πεδία, ένα μελλοντικό μήνα
+        # θα έριχνε το nightly με ValueError σε γυμνό float().
+        recent_amount = pd.to_numeric(recent["totalCostWithVAT"], errors="coerce")
         recent_list = [
             {
                 "adam": row["referenceNumber"],
                 "date": row["submission_date"].date().isoformat(),
                 "title": row["title"],
                 "amount_with_vat": (
-                    round(float(row["totalCostWithVAT"]), 2)
-                    if pd.notna(row["totalCostWithVAT"]) and float(row["totalCostWithVAT"]) <= VALUE_SANITY_CAP
-                    else None
+                    round(float(amount), 2) if pd.notna(amount) and amount <= VALUE_SANITY_CAP else None
                 ),
                 "procedure": row["procedureType.value"],
                 "contractor_name": row["contractor_name"],
             }
-            for _, row in recent.iterrows()
+            for (_, row), amount in zip(recent.iterrows(), recent_amount)
         ]
 
         years = sorted(int(y) for y in overview.keys())
@@ -483,22 +519,53 @@ def sanitize(obj):
     return obj
 
 
+def _validate_reply_schema(path: Path, reply_data: object) -> list[dict]:
+    """M4 (review.md): ελάχιστο schema check -- βλ. replies/README.md/_TEMPLATE.json.
+    `vat` string, `replies` λίστα από dicts με `date`/`text` strings. Ρίχνει
+    ValueError με ρητό μήνυμα αντί να αφήσει σκουπίδια να περάσουν σιωπηλά
+    στο δημοσιευμένο JSON/Astro template."""
+    if not isinstance(reply_data, dict):
+        raise ValueError(f"{path.name}: το top-level JSON πρέπει να είναι object, όχι {type(reply_data).__name__}")
+    if not isinstance(reply_data.get("vat"), str):
+        raise ValueError(f"{path.name}: το πεδίο 'vat' λείπει ή δεν είναι string")
+    replies = reply_data.get("replies", [])
+    if not isinstance(replies, list):
+        raise ValueError(f"{path.name}: το πεδίο 'replies' πρέπει να είναι λίστα, όχι {type(replies).__name__}")
+    for i, entry in enumerate(replies):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{path.name}: replies[{i}] πρέπει να είναι object, όχι {type(entry).__name__}")
+        if not isinstance(entry.get("date"), str):
+            raise ValueError(f"{path.name}: replies[{i}].date λείπει ή δεν είναι string")
+        if not isinstance(entry.get("text"), str):
+            raise ValueError(f"{path.name}: replies[{i}].text λείπει ή δεν είναι string")
+    return replies
+
+
 def attach_replies(pages: dict, replies_dir: Path = REPLIES_DIR) -> None:
     """P2-13: ενσωματώνει replies/<ΑΦΜ>.json (χειροκίνητα επιμελημένο, tracked
     -- βλ. replies/README.md) στο αντίστοιχο page. ΔΕΝ σιωπά αν ένα reply
     αναφέρεται σε ΑΦΜ που δεν υπάρχει στα pages -- warning, ώστε να μην χαθεί
-    αθόρυβα μια απάντηση φορέα."""
+    αθόρυβα μια απάντηση φορέα.
+
+    M4 (review.md): ένα κακοσχηματισμένο αρχείο (JSON parse error ή λάθος
+    schema) ρίχνει ρητό SystemExit αντί να ρίξει άσχετο traceback (ή
+    χειρότερα, να περάσει σιωπηλά σκουπίδια στο δημοσιευμένο JSON) -- το
+    αρχείο είναι tracked, ο συντάκτης πρέπει να μάθει το λάθος στο commit."""
     if not replies_dir.exists():
         return
     for path in sorted(replies_dir.glob("*.json")):
         if path.name.startswith("_"):
             continue
-        reply_data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            reply_data = json.loads(path.read_text(encoding="utf-8"))
+            replies = _validate_reply_schema(path, reply_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise SystemExit(f"ΣΦΑΛΜΑ: κακοσχηματισμένο replies/{path.name} -- {e}") from e
         vat = normalize_vat(reply_data.get("vat") or path.stem)
         if vat not in pages:
             print(f"ΠΡΟΣΟΧΗ: replies/{path.name} αναφέρεται σε ΑΦΜ {vat} που δεν υπάρχει στα foreas_pages -- αγνοείται.")
             continue
-        pages[vat]["replies"] = reply_data.get("replies", [])
+        pages[vat]["replies"] = replies
 
 
 def attach_network(pages: dict, graph_dir: Path = GRAPH_DIR) -> None:
@@ -512,18 +579,30 @@ def attach_network(pages: dict, graph_dir: Path = GRAPH_DIR) -> None:
     άλλως δεν έπρεπε να υπάρχει αν δεν υπάρχουν δεδομένα)."""
     ego_path = graph_dir / "ego_networks.json"
     nwr_path = graph_dir / "graph_features_org.csv"
-    if not ego_path.exists():
+    # L7 (review.md): τα δύο exports χειρίζονται ανεξάρτητα -- αν λείπει το ένα
+    # (π.χ. μερικό R2 pull) δεν πρέπει να χαθεί σιωπηλά και το άλλο.
+    if not ego_path.exists() and not nwr_path.exists():
         return
-    ego = json.loads(ego_path.read_text(encoding="utf-8"))
-    snapshot_date = ego.get("snapshot_date")
-    networks = ego.get("networks", {})
+    snapshot_date = None
+    networks: dict = {}
+    if ego_path.exists():
+        ego = json.loads(ego_path.read_text(encoding="utf-8"))
+        snapshot_date = ego.get("snapshot_date")
+        networks = ego.get("networks", {})
 
     nwr_by_org: dict[str, dict] = {}
     if nwr_path.exists():
         nwr = pd.read_csv(nwr_path, dtype={"org_vat": str})
         for vat, g in nwr.groupby("org_vat"):
             nwr_by_org[vat] = {
-                str(int(r["year"])): {"value": round(100.0 * r["new_winner_rate"], 1), "n": int(r["n_contractors"])}
+                str(int(r["year"])): {
+                    "value": round(100.0 * r["new_winner_rate"], 1),
+                    "n": int(r["n_contractors"]),
+                    # M3 (review.md): πρώτο ενεργό έτος του φορέα -- κάθε
+                    # ανάδοχος είναι τετριμμένα «νέος» (100%), βλ.
+                    # queries.py::query_c_new_winner_rate.
+                    "left_censored": bool(r.get("left_censored", False)),
+                }
                 for _, r in g.iterrows()
             }
 

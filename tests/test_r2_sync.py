@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from r2_sync import ObjectInfo, plan_pull, plan_push, pull, read_credential
+from r2_sync import GRAPH_SYNC_FILES, ObjectInfo, plan_pull, plan_push, pull, read_credential
 
 
 class FakeStore:
@@ -30,10 +30,12 @@ def raw_dir(tmp_path, monkeypatch):
 
     raw = tmp_path / "raw"
     processed = tmp_path / "processed"
+    graph = tmp_path / "graph"
     raw.mkdir()
     processed.mkdir()
-    monkeypatch.setattr(r2_sync, "DIR_MAP", {"raw": raw, "processed": processed})
-    return raw, processed
+    graph.mkdir()
+    monkeypatch.setattr(r2_sync, "DIR_MAP", {"raw": raw, "processed": processed, "graph": graph})
+    return raw, processed, graph
 
 
 def _write(path: Path, content: str = "x") -> Path:
@@ -42,7 +44,7 @@ def _write(path: Path, content: str = "x") -> Path:
 
 
 def test_plan_push_uploads_missing_remote_file(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     _write(raw / "auction_2024_01.parquet")
 
     store = FakeStore({})
@@ -53,7 +55,7 @@ def test_plan_push_uploads_missing_remote_file(raw_dir):
 
 
 def test_plan_push_skips_unchanged_file(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     local_path = _write(raw / "auction_2024_01.parquet")
     stat = local_path.stat()
     far_future = datetime.now(timezone.utc) + timedelta(days=1)
@@ -68,7 +70,7 @@ def test_plan_push_skips_unchanged_file(raw_dir):
 
 
 def test_plan_push_reuploads_when_size_differs(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     _write(raw / "auction_2024_01.parquet", "longer-content")
     far_future = datetime.now(timezone.utc) + timedelta(days=1)
 
@@ -82,7 +84,7 @@ def test_plan_push_reuploads_when_size_differs(raw_dir):
 
 
 def test_plan_push_reuploads_when_locally_modified_after_last_upload(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     local_path = _write(raw / "auction_2024_01.parquet")
     stat = local_path.stat()
     stale_remote = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc) - timedelta(days=1)
@@ -97,7 +99,7 @@ def test_plan_push_reuploads_when_locally_modified_after_last_upload(raw_dir):
 
 
 def test_plan_push_second_run_is_idempotent(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     local_path = _write(raw / "auction_2024_01.parquet")
     stat = local_path.stat()
 
@@ -112,7 +114,7 @@ def test_plan_push_second_run_is_idempotent(raw_dir):
 
 
 def test_plan_push_never_lists_remote_deletions(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     # τοπικά δεν υπάρχει τίποτα -- το remote-only αντικείμενο δεν πρέπει
     # να εμφανιστεί πουθενά στο plan_push (καμία λογική διαγραφής).
     store = FakeStore({
@@ -135,7 +137,7 @@ def test_plan_pull_downloads_missing_local_file(raw_dir):
 
 
 def test_plan_pull_skips_existing_local_file(raw_dir):
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     local_path = _write(raw / "auction_2024_01.parquet")
 
     store = FakeStore({
@@ -152,7 +154,7 @@ def test_plan_pull_skips_existing_local_file(raw_dir):
 def test_plan_pull_redownloads_when_size_differs(raw_dir):
     # #5 (CHECK 2026-07-11): αρχείο που επιδιορθώθηκε remotely (διαφορετικό
     # μέγεθος) πρέπει να ξανακατέβει -- όχι να παραλειφθεί επειδή "υπάρχει".
-    raw, _ = raw_dir
+    raw, _, _ = raw_dir
     _write(raw / "auction_2024_01.parquet", "old-version")
 
     store = FakeStore({
@@ -208,3 +210,29 @@ def test_pull_preserves_remote_mtime_so_push_stays_incremental(raw_dir):
     to_upload, skipped = plan_push(store, ["raw"])
     assert to_upload == []
     assert skipped == 1
+
+
+def test_plan_push_excludes_internal_graph_findings(raw_dir):
+    # L4 (review.md): μόνο τα 2 αρχεία που διαβάζει το attach_network() πρέπει
+    # να ανέβουν/κατέβουν στο "graph" prefix -- τα εσωτερικά-μόνο findings CSV
+    # δεν έχουν λόγο να φτάνουν σε κάθε CI runner.
+    _, _, graph = raw_dir
+    for name in GRAPH_SYNC_FILES | {"graph_findings_exclusive.csv", "graph_findings_alternation.csv"}:
+        _write(graph / name)
+
+    store = FakeStore({})
+    to_upload, _ = plan_push(store, ["graph"])
+
+    assert {key.split("/", 1)[1] for key, _ in to_upload} == GRAPH_SYNC_FILES
+
+
+def test_plan_pull_excludes_internal_graph_findings(raw_dir):
+    store = FakeStore({
+        "graph/ego_networks.json": ObjectInfo(size=10, last_modified=datetime.now(timezone.utc)),
+        "graph/graph_features_org.csv": ObjectInfo(size=10, last_modified=datetime.now(timezone.utc)),
+        "graph/graph_findings_exclusive.csv": ObjectInfo(size=10, last_modified=datetime.now(timezone.utc)),
+        "graph/graph_findings_alternation.csv": ObjectInfo(size=10, last_modified=datetime.now(timezone.utc)),
+    })
+    to_download, _ = plan_pull(store, ["graph"])
+
+    assert {key.split("/", 1)[1] for key, _, _ in to_download} == GRAPH_SYNC_FILES

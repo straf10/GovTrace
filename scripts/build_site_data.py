@@ -19,7 +19,15 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from kimdis_data import RAW_DIR, PROCESSED_DIR, is_valid_vat_checksum, load_entity, normalize_vat, sanitize_value
+from kimdis_data import (
+    PERMANENT_AUCTION_GAPS,
+    PROCESSED_DIR,
+    RAW_DIR,
+    is_valid_vat_checksum,
+    load_entity,
+    normalize_vat,
+    sanitize_value,
+)
 
 SITE_DATA_DIR = PROCESSED_DIR.parent.parent / "site" / "public" / "data"
 
@@ -43,7 +51,6 @@ COMPLETENESS_COLS = [
     "budget",
 ]
 CPV_RE = re.compile(r"^\d{8}(?:-\d)?$")
-PERMANENT_AUCTION_GAPS = {(2021, 2), (2025, 8)}
 RAW_FILENAME_RE = re.compile(r"^([a-z]+)_(\d{4})_(\d{2})$")
 
 # #13 (CHECK 2026-07-11): τα entities που τροφοδοτούν τους κύριους δείκτες.

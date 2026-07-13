@@ -46,7 +46,7 @@ import pyarrow.parquet as pq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from kimdis import Endpoint, KimdisClient, PaginationIncompleteError
-from kimdis_data import completeness_report, flatten
+from kimdis_data import PERMANENT_AUCTION_GAPS, completeness_report, flatten
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backfill_historical")
@@ -61,6 +61,12 @@ def parquet_row_count(path: Path) -> int:
 
 def month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+
+
+def is_permanent_gap(entity: str, year: int, month: int) -> bool:
+    """M1 (review.md): γνωστό μόνιμο κενό (server-side σφάλμα ΚΗΜΔΗΣ, όχι
+    transient) -- δεν χρειάζεται να ξαναδοκιμαστεί κάθε βράδυ."""
+    return entity == "auction" and (year, month) in PERMANENT_AUCTION_GAPS
 
 
 def fetch_month(client: KimdisClient, endpoint: Endpoint, year: int, month: int) -> pd.DataFrame | None:
@@ -126,6 +132,8 @@ def build_audit_targets(
                 if year == today.year and month >= today.month:
                     continue
                 for entity in entities:
+                    if is_permanent_gap(entity, year, month):
+                        continue
                     targets.add((entity, year, month))
         return sorted(targets)
 
@@ -133,14 +141,48 @@ def build_audit_targets(
         if year < start_year or year > end_year:
             continue
         for entity in entities:
+            if is_permanent_gap(entity, year, month):
+                continue
             targets.add((entity, year, month))
 
     entity_set = set(entities)
     for entry in manifest:
-        if entry["entity"] in entity_set:
+        if entry["entity"] in entity_set and not is_permanent_gap(entry["entity"], entry["year"], entry["month"]):
             targets.add((entry["entity"], entry["year"], entry["month"]))
 
     return sorted(targets)
+
+
+def merge_failure_manifest(
+    prior_manifest: list[dict],
+    new_failures: list[dict],
+    entities: list[str],
+    start_year: int,
+    end_year: int,
+) -> list[dict]:
+    """Ενώνει το παλιό manifest με τα νέα αποτελέσματα του run.
+
+    Διατηρεί τις καταχωρίσεις του παλιού manifest για entities ΕΚΤΟΣ αυτού
+    του run (ένα run με --entities payment δεν πρέπει να σβήνει γνωστές
+    αποτυχίες auction/contract/notice) ΚΑΙ για έτη εκτός [start_year,
+    end_year] του ίδιου entity (L6, review.md: ένα χειροκίνητο run με
+    στενότερο εύρος -- π.χ. --start-year 2024 --skip-audit -- δεν πρέπει να
+    σβήνει σιωπηλά γνωστές αποτυχίες παλιότερων ετών που δεν ελέγχθηκαν καν σε
+    αυτό το run), dedup στο υπόλοιπο.
+    """
+    entity_set = set(entities)
+    other_entries = [
+        f for f in prior_manifest
+        if f["entity"] not in entity_set or f["year"] < start_year or f["year"] > end_year
+    ]
+    seen = {(f["entity"], f["year"], f["month"]) for f in other_entries}
+    merged = list(other_entries)
+    for f in new_failures:
+        key = (f["entity"], f["year"], f["month"])
+        if key not in seen:
+            seen.add(key)
+            merged.append(f)
+    return merged
 
 
 def audit_and_repair(
@@ -290,6 +332,10 @@ def main() -> None:
                     endpoint = Endpoint(entity)
                     out_path = args.out / f"{entity}_{year}_{month:02d}.parquet"
 
+                    if is_permanent_gap(entity, year, month):
+                        logger.info("  (γνωστό μόνιμο κενό, παράλειψη) %s %04d-%02d", entity, year, month)
+                        continue
+
                     # Παραλείπουμε αν υπάρχει ήδη (P2: μόνο footer metadata, όχι πλήρες read)
                     if out_path.exists():
                         existing_count = parquet_row_count(out_path)
@@ -337,20 +383,7 @@ def main() -> None:
             )
             failures = audit_and_repair(client, args.out, targets, main_loop_failure_keys)
 
-        # Merge (ανεξάρτητα από --skip-audit): διατηρούμε τις καταχωρίσεις του
-        # παλιού manifest για entities ΕΚΤΟΣ αυτού του run (ένα run με
-        # --entities payment δεν πρέπει να σβήνει γνωστές αποτυχίες
-        # auction/contract/notice), dedup στο υπόλοιπο.
-        entity_set = set(args.entities)
-        other_entities = [f for f in prior_manifest if f["entity"] not in entity_set]
-        seen = {(f["entity"], f["year"], f["month"]) for f in other_entities}
-        merged = list(other_entities)
-        for f in failures:
-            key = (f["entity"], f["year"], f["month"])
-            if key not in seen:
-                seen.add(key)
-                merged.append(f)
-        failures = merged
+        failures = merge_failure_manifest(prior_manifest, failures, args.entities, args.start_year, args.end_year)
 
     if failures:
         save_failures(failures)

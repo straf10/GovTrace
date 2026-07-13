@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,11 @@ GRAPH_DIR = Path("data/graph_staging/gds")
 # να μπορεί να ενώσει την κάρτα "Δίκτυο" (P2-17) και εκεί.
 DIR_MAP = {"raw": RAW_DIR, "processed": PROCESSED_DIR, "graph": GRAPH_DIR}
 DEFAULT_BUCKET = "ellada30-data"
+# L4 (review.md): μόνο τα 2 αρχεία που όντως διαβάζει το build_foreas_data.py
+# (attach_network) φτάνουν στο CI runner -- τα εσωτερικά-μόνο
+# graph_findings_exclusive.csv/graph_findings_alternation.csv (ονομαστικά
+# ζεύγη) μένουν μόνο στο R2, χωρίς λόγο να κατεβαίνουν σε κάθε nightly.
+GRAPH_SYNC_FILES = {"ego_networks.json", "graph_features_org.csv"}
 
 
 @dataclass(frozen=True)
@@ -132,6 +138,8 @@ def iter_local_files(prefix: str) -> Iterator[tuple[str, Path]]:
     for path in sorted(dir_path.rglob("*")):
         if path.is_file():
             rel = path.relative_to(dir_path).as_posix()
+            if prefix == "graph" and rel not in GRAPH_SYNC_FILES:
+                continue
             yield f"{prefix}/{rel}", path
 
 
@@ -161,6 +169,8 @@ def plan_pull(store: Store, prefixes: list[str]) -> tuple[list[tuple[str, Path, 
         remote = store.list(f"{prefix}/")
         for key, info in remote.items():
             rel = key[len(prefix) + 1 :]
+            if prefix == "graph" and rel not in GRAPH_SYNC_FILES:
+                continue
             local_path = DIR_MAP[prefix] / rel
             # #5 (CHECK 2026-07-11): υπάρχον τοπικό αρχείο ξανακατεβαίνει αν το
             # μέγεθος διαφέρει από το remote -- πριν, ένας μήνας που είχε
@@ -202,6 +212,13 @@ def pull(store: Store, prefixes: list[str], dry_run: bool) -> None:
 
 
 def main() -> None:
+    # M5 (review.md): χωρίς αυτό, ένα χειροκίνητο τρέξιμο σε Windows console
+    # (cp1252, χωρίς PYTHONIOENCODING=utf-8) σκάει στο ελληνικό summary print
+    # ΜΕΤΑ την ολοκλήρωση των uploads -- ο χειριστής βλέπει traceback+exit 1
+    # ενώ η δουλειά έχει ήδη γίνει. reconfigure() > βασισμένο στη μνήμη του
+    # χειριστή για το env var (ήδη έχει δαγκώσει σε sessions 23/30/35).
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("action", choices=["push", "pull"])
     parser.add_argument("--prefix", choices=list(DIR_MAP), action="append", dest="prefixes")

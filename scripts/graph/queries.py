@@ -104,18 +104,30 @@ def query_b_market_bridges(session) -> pd.DataFrame:
 
 
 def query_c_new_winner_rate(session) -> pd.DataFrame:
+    """M3 (review.md, left-censoring): το `first_year` ανά (org, contractor)
+    υπολογίζεται μέσα στο παράθυρο δεδομένων (2020-εξής) -- για το πρώτο
+    ενεργό έτος ΚΑΘΕ φορέα, όλοι οι ανάδοχοι εμφανίζονται τετριμμένα ως
+    «νέοι» (100%), όχι επειδή πράγματι είναι πρωτοεμφανιζόμενοι αλλά επειδή
+    δεν υπάρχει ιστορικό πριν το dataset. Η γραμμή αυτή σημειώνεται με
+    `left_censored=true` αντί να αποσιωπηθεί -- η κατανάλωση (attach_network)
+    αποφασίζει αν θα την εμφανίσει."""
     rows = session.run(
         "MATCH (o:Organization)-[:ISSUED]->(a:Award)-[:WON_BY]->(c:Contractor) "
-        "WHERE a.source_year IS NOT NULL AND NOT a.cancelled "
+        "WHERE a.source_year IS NOT NULL "
         "WITH o, c, min(a.source_year) AS first_year "
         "MATCH (o)-[:ISSUED]->(a2:Award)-[:WON_BY]->(c) "
-        "WHERE a2.source_year IS NOT NULL AND NOT a2.cancelled "
+        "WHERE a2.source_year IS NOT NULL "
         "WITH o, a2.source_year AS year, c, first_year "
         "WITH o, year, count(DISTINCT c) AS n_contractors, "
         "  count(DISTINCT CASE WHEN first_year = year THEN c END) AS n_new_contractors "
         "WHERE n_contractors >= $min_n "
+        "WITH o, year, n_contractors, n_new_contractors "
+        "MATCH (o)-[:ISSUED]->(a3:Award) "
+        "WHERE a3.source_year IS NOT NULL "
+        "WITH o, year, n_contractors, n_new_contractors, min(a3.source_year) AS org_first_year "
         "RETURN o.vat AS org_vat, year, n_contractors, n_new_contractors, "
-        "  round(1.0 * n_new_contractors / n_contractors, 4) AS new_winner_rate "
+        "  round(1.0 * n_new_contractors / n_contractors, 4) AS new_winner_rate, "
+        "  (year = org_first_year) AS left_censored "
         "ORDER BY o.vat, year",
         min_n=MIN_ORG_TOTAL_FOR_NWR,
     ).data()
@@ -156,7 +168,7 @@ def query_e_alternation(session) -> pd.DataFrame:
     διαφορετικά έτη (ένδειξη επαναλαμβανόμενης εναλλαγής, όχι απόδειξη)."""
     rows = session.run(
         "MATCH (o:Organization)-[:ISSUED]->(a:Award)-[:WON_BY]->(c:Contractor) "
-        "WHERE a.source_year IS NOT NULL AND NOT a.cancelled "
+        "WHERE a.source_year IS NOT NULL "
         "WITH o, c, collect(DISTINCT a.source_year) AS years "
         "WITH o, collect({vat: c.vat, name: c.name, years: years}) AS contractors "
         "WHERE size(contractors) = 2 "

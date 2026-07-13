@@ -57,7 +57,9 @@ def get_driver():
 
 def project_snapshot_year(session, graph_name: str, year: int) -> dict:
     """Cypher aggregation projection: org-contractor edge βαρύτητας
-    total_amount_ex_vat, ΜΟΝΟ awards με source_year=year, μη ακυρωμένα.
+    total_amount_ex_vat, ΜΟΝΟ awards με source_year=year (ΠΕΡΙΛΑΜΒΑΝΟΝΤΑΙ
+    ακυρωμένες αναθέσεις -- ίδια πολιτική με το AWARDS_TO/full projection
+    και το production top-10 προφίλ φορέα, βλ. METHODOLOGY §4.10).
 
     Bug βρέθηκε στο P2-06 (session 35): μία μόνο κατεύθυνση org->contractor
     αφήνει τα Organization nodes ΧΩΡΙΣ εισερχόμενες ακμές -- το PageRank τα
@@ -70,12 +72,12 @@ def project_snapshot_year(session, graph_name: str, year: int) -> dict:
         "CALL gds.graph.project.cypher($name, "
         "'MATCH (n) WHERE n:Organization OR n:Contractor RETURN id(n) AS id, labels(n) AS labels', "
         "'MATCH (o:Organization)-[:ISSUED]->(a:Award)-[:WON_BY]->(c:Contractor) "
-        "WHERE a.source_year = $year AND NOT a.cancelled "
+        "WHERE a.source_year = $year "
         "WITH o, c, sum(a.amount_ex_vat) AS w "
         "RETURN id(o) AS source, id(c) AS target, w AS weight "
         "UNION ALL "
         "MATCH (o:Organization)-[:ISSUED]->(a:Award)-[:WON_BY]->(c:Contractor) "
-        "WHERE a.source_year = $year AND NOT a.cancelled "
+        "WHERE a.source_year = $year "
         "WITH o, c, sum(a.amount_ex_vat) AS w "
         "RETURN id(c) AS source, id(o) AS target, w AS weight', "
         "{parameters: {year: $year}})",

@@ -108,6 +108,7 @@ jobs:
           python scripts/compute_indicators_v1.py
           python scripts/build_site_data.py
           python scripts/build_foreas_data.py
+          python scripts/build_anadoxoi_data.py
           python scripts/build_anadoxos_profiles.py
 
       - name: npm ci && astro build
@@ -130,7 +131,10 @@ jobs:
           command: pages deploy dist --project-name=ellada30 --branch=master
 
       - name: R2 push (νέα/αλλαγμένα raw+processed πίσω στο R2)
-        run: python scripts/r2_sync.py push
+        # L5 (review.md): ρητά prefixes -- το graph dir είναι ΜΟΝΟ χειροκίνητο
+        # export (R-06), το nightly δεν πρέπει ΠΟΤΕ να το ξαναγράψει στο R2,
+        # ακόμα κι αν κάποιο μελλοντικό βήμα το αγγίξει τοπικά.
+        run: python scripts/r2_sync.py push --prefix raw --prefix processed
 
       - name: Verify live build-info.json matches this run's commit
         # #14 (CHECK 2026-07-11): retry loop αντί για sleep 15 + μονό curl --

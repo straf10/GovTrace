@@ -130,12 +130,17 @@ def run_verify(driver) -> list[Check]:
         ))
 
         # 3) Entities: 6 τυχαία Organization nodes -- name property ίδιο με CSV.
+        # L1 (review.md): column-name lookup αντί για θέση (ίδιο pattern με το
+        # check 4, που είχε ακριβώς αυτό το bug -- βλ. σχόλιο παρακάτω).
         sample_orgs = orgs.sample(n=min(20, len(orgs)), random_state=42)
+        i_vat = orgs.columns.get_loc("vat:ID(Organization)")
+        i_name = orgs.columns.get_loc("name")
         mismatches = []
         for row in sample_orgs.itertuples(index=False):
-            rec = session.run("MATCH (o:Organization {vat: $vat}) RETURN o.name AS name", vat=row[0]).single()
-            if rec is None or rec["name"] != row[1]:
-                mismatches.append(row[0])
+            vat, name = row[i_vat], row[i_name]
+            rec = session.run("MATCH (o:Organization {vat: $vat}) RETURN o.name AS name", vat=vat).single()
+            if rec is None or rec["name"] != name:
+                mismatches.append(vat)
         checks.append(Check(
             "3. Entities (20 τυχαία Organization name)",
             not mismatches,

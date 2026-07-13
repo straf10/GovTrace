@@ -313,7 +313,12 @@ const adamUrl = (adam: string) => `https://cerpp.eprocurement.gov.gr/khmdhs-open
       <p class="muted">Δεδομένα δικτύου: snapshot {page.network.snapshot_date ?? "άγνωστο"} (offline, χειροκίνητη ανανέωση περιοδικά).</p>
 
       {(() => {
-        const years = Object.keys(page.network.new_winner_rate ?? {}).sort();
+        {/* M3 (review.md): το πρώτο ενεργό έτος ενός φορέα είναι left-censored
+            (κάθε ανάδοχος τετριμμένα «νέος») -- δεν επιλέγεται ως προεπιλεγμένο
+            έτος προβολής, ακόμα κι αν είναι το πιο πρόσφατο διαθέσιμο. */}
+        const years = Object.keys(page.network.new_winner_rate ?? {})
+          .filter((y) => !page.network.new_winner_rate[y].left_censored)
+          .sort();
         const latestNwrYear = years.length ? years[years.length - 1] : null;
         const latestNwr = latestNwrYear ? page.network.new_winner_rate[latestNwrYear] : null;
         return latestNwr ? (

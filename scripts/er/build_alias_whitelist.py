@@ -52,7 +52,11 @@ def build_vat_groups(contractors: pd.DataFrame, matches: pd.DataFrame) -> dict[s
         )
 
     # Κανόνας 2: missing-vat name <-> valid-vat name, πανομοιότυπο όνομα.
-    contractor_lookup = contractors.set_index(["vat", "name"], drop=False)
+    # L2 (review.md): boolean mask αντί για `.loc[(None, missing_name)]` σε
+    # MultiIndex -- το None==NaN matching σε object-dtype index είναι
+    # implementation-dependent (σιωπηλό no-op αν δεν ταυτιστεί), το mask είναι
+    # ρητό και ανεξάρτητο pandas version.
+    missing_vat_mask = ~contractors["vat"].map(_vat_valid)
     same_name = matches[matches["jw_score"] >= IDENTICAL_NAME_THRESHOLD]
     for row in same_name.itertuples(index=False):
         vat_l_valid, vat_r_valid = _vat_valid(row.vat_l), _vat_valid(row.vat_r)
@@ -60,11 +64,10 @@ def build_vat_groups(contractors: pd.DataFrame, matches: pd.DataFrame) -> dict[s
             continue  # ίδιο ΑΦΜ ήδη καλυμμένο παραπάνω· διαφορετικό έγκυρο ΑΦΜ = uncertain, εξαιρείται
         target_vat = row.vat_l if vat_l_valid else row.vat_r
         missing_name = row.name_r if vat_l_valid else row.name_l
-        try:
-            src = contractor_lookup.loc[(None, missing_name)]
-        except KeyError:
+        src = contractors[missing_vat_mask & (contractors["name"] == missing_name)]
+        if src.empty:
             continue
-        entries = [src] if isinstance(src, pd.Series) else [r for _, r in src.iterrows()]
+        entries = [r for _, r in src.iterrows()]
         for entry in entries:
             groups.setdefault(target_vat, []).append(
                 {

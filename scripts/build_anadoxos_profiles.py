@@ -98,21 +98,22 @@ def build_profiles(auctions: pd.DataFrame, top_vats: set[str], resolver: pd.Seri
             .sort_values("submission_date", ascending=False)
             .head(RECENT_N)
         )
+        # L3 (review.md): coerce μία φορά πριν το iterrows, βλ. ίδιο fix στο
+        # build_foreas_data.py.
+        recent_amount = pd.to_numeric(recent["totalCostWithVAT"], errors="coerce")
         recent_list = [
             {
                 "adam": row["referenceNumber"],
                 "date": row["submission_date"].date().isoformat(),
                 "title": row["title"],
                 "amount_with_vat": (
-                    round(float(row["totalCostWithVAT"]), 2)
-                    if pd.notna(row["totalCostWithVAT"]) and float(row["totalCostWithVAT"]) <= VALUE_SANITY_CAP
-                    else None
+                    round(float(amount), 2) if pd.notna(amount) and amount <= VALUE_SANITY_CAP else None
                 ),
                 "procedure": row["procedureType.value"],
                 "org_vat": row["org_vat"],
                 "org_name": row["organization.value"],
             }
-            for _, row in recent.iterrows()
+            for (_, row), amount in zip(recent.iterrows(), recent_amount)
         ]
 
         years = sorted(int(y) for y in overview.keys())

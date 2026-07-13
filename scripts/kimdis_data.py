@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
 
+# M1 (review.md): μήνες όπου το ΚΗΜΔΗΣ επιστρέφει σφάλμα (όχι 0 εγγραφές) σε
+# κάθε προσπάθεια -- επιβεβαιωμένα ΜΟΝΙΜΑ κενά, όχι transient timeouts.
+# Κοινή σταθερά (πριν ζούσε μόνο στο build_site_data.py) ώστε το backfill να
+# μπορεί να τα παραλείπει αντί να τα ξαναδοκιμάζει (και να αποτυγχάνει) κάθε
+# βράδυ.
+PERMANENT_AUCTION_GAPS = {(2021, 2), (2025, 8)}
+
 _VAT_RE = re.compile(r"\D")
 _VALID_VAT_RE = re.compile(r"\d{9}")
 
