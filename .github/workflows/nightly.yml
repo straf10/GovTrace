@@ -108,6 +108,7 @@ jobs:
           python scripts/compute_indicators_v1.py
           python scripts/build_site_data.py
           python scripts/build_foreas_data.py
+          python scripts/build_anadoxos_profiles.py
 
       - name: npm ci && astro build
         working-directory: site
