@@ -30,6 +30,14 @@ PERMANENT_AUCTION_GAPS = {(2021, 2), (2025, 8)}
 
 _VAT_RE = re.compile(r"\D")
 _VALID_VAT_RE = re.compile(r"\d{9}")
+# P2-03 follow-up (session 42, 2026-07-13): checksum audit εντόπισε 3 κωδικούς
+# όπου δεκάδες ΑΣΥΝΔΕΤΕΣ επιχειρήσεις (π.χ. Airbus Helicopters, APS, DTE)
+# μοιράζονται το ίδιο "ΑΦΜ" -- σαφές fingerprint dummy/placeholder τιμής, όχι
+# πραγματικό ΑΦΜ. Βλ. docs/research/splink_poc_results.md §Checksum audit.
+# Σκόπιμα ΣΤΕΝΟ scope (μόνο αυτοί οι 3 κωδικοί): το γενικό mod-11 checksum
+# αποτυγχάνει και σε χιλιάδες πραγματικές εταιρείες (ιστορικά μη τυπικά ΑΦΜ),
+# οπότε ΔΕΝ χρησιμοποιείται ως γενικό φίλτρο εδώ.
+_DUMMY_VAT_VALUES = frozenset({"999999999", "111111111", "001111111"})
 
 INT64_MAX = 2**63 - 1
 INT64_MIN = -(2**63)
@@ -152,7 +160,8 @@ def normalize_vat(value: object) -> str | None:
     μηδενικά (π.χ. "\\t090016590", " 090153025", "00901536025"). Κρατάμε
     μόνο τα ψηφία· αν είναι >9, κόβουμε αρχικά μηδενικά· αν καταλήγουν σε
     7-9 ψηφία, συμπληρώνουμε με μηδενικά αριστερά σε 9. Τιμές όπως "0",
-    "09", "000000000" απορρίπτονται ως άκυρες.
+    "09", "000000000" απορρίπτονται ως άκυρες, καθώς και γνωστοί dummy
+    κωδικοί (_DUMMY_VAT_VALUES).
     """
     if not isinstance(value, str):
         return None
@@ -161,7 +170,7 @@ def normalize_vat(value: object) -> str | None:
         digits = digits.lstrip("0")
     if 7 <= len(digits) <= 9:
         digits = digits.zfill(9)
-    if _VALID_VAT_RE.fullmatch(digits) and digits != "000000000":
+    if _VALID_VAT_RE.fullmatch(digits) and digits != "000000000" and digits not in _DUMMY_VAT_VALUES:
         return digits
     return None
 
