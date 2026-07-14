@@ -138,8 +138,8 @@ def main() -> None:
 
     index = build_index()
     if index.empty:
-        print("Δεν βρέθηκαν δεδομένα -- τρέξε πρώτα build_anadoxoi_data.py / το pipeline.")
-        return
+        raise RuntimeError("Δεν βρέθηκαν δεδομένα -- πιθανή αποτυχία backfill ή αρχεία R2 pull. "
+                           "Σταμάτα τη χτίσιμο αντί να δημιουργηθούν ημιτελή δεδομένα.")
     top_vats = set(index["vat"].head(TOP_N))
 
     auctions = load_auctions_slim()

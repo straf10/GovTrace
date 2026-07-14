@@ -102,8 +102,8 @@ def main() -> None:
     PUBLIC_DATA_DIR.mkdir(parents=True, exist_ok=True)
     table = build_index()
     if table.empty:
-        print("Δεν βρέθηκαν δεδομένα auction -- τρέξε πρώτα το pipeline.")
-        return
+        raise RuntimeError("Δεν βρέθηκαν δεδομένα auction -- πιθανή αποτυχία backfill ή αρχεία R2 pull. "
+                           "Σταμάτα τη χτίσιμο αντί να δημιουργηθούν ημιτελή δεδομένα.")
     # Columnar encoding (columns + row arrays, ΟΧΙ array of objects) -- σε
     # 55k+ γραμμές η επανάληψη των ίδιων 6 keys ανά εγγραφή προσέθετε ~3MB
     # καθαρή επανάληψη χωρίς πληροφορία (μετρημένο: 9,3MB -> ~6MB raw).
