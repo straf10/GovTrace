@@ -1,0 +1,59 @@
+name: GEMI ingest (incremental)
+
+# P2-B2 (docs/PHASE_2.md): αντλεί προφίλ ΓΕΜΗ ΜΟΝΟ για τα ΑΦΜ αναδόχων του
+# ΚΗΜΔΗΣ (data/processed/er/contractor_aliases.csv, 164.611 μοναδικά ΑΦΜ).
+# Το επιβεβαιωμένο όριο του API είναι 8 req/min (email έγκρισης 2026-07-14) --
+# πολύ πιο αυστηρό από το ΚΗΜΔΗΣ (300/min), οπότε μία πλήρης διέλευση χρειάζεται
+# ~14 μέρες. Αντί για ένα πολυήμερο τοπικό process, το job τρέχει ανά ώρα,
+# κάνει ένα batch (--limit, ~1 ώρα στο rate limit) και σταματά· το resume
+# γίνεται μέσω του ήδη-αντλημένου data/processed/gemi/companies.parquet, το
+# οποίο pull/push-άρεται στο R2 όπως τα raw/processed του nightly.yml.
+#
+# concurrency με cancel-in-progress: false: αν ένα run καθυστερήσει πέρα από
+# την ώρα, το επόμενο ΟΥΡΙΑΖΕΙ αντί να τρέξει παράλληλα (θα έγραφε πάνω στο
+# ίδιο parquet checkpoint).
+
+on:
+  schedule:
+    - cron: "15 * * * *" # κάθε ώρα, εκτός του :30 nightly.yml (αποφυγή σύγκρουσης runner)
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Μέγιστο πλήθος νέων ΑΦΜ σε αυτό το run (κενό = default 500)"
+        required: false
+
+concurrency:
+  group: gemi-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GEMI_API_KEY: ${{ secrets.GEMI_API_KEY }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: pip install (requirements.lock)
+        run: pip install -r requirements.lock
+
+      - name: R2 pull (processed -- contractor_aliases.csv + ήδη-αντλημένο companies.parquet)
+        run: python scripts/r2_sync.py pull --prefix processed
+
+      - name: GEMI ingest batch
+        # ~500 ΑΦΜ * 7.5s/ΑΦΜ ≈ 62 λεπτά, εντός του 75-λεπτου job timeout.
+        run: python scripts/gemi_ingest.py --limit "${{ github.event.inputs.limit || '500' }}"
+
+      - name: R2 push (companies.parquet checkpoint)
+        run: python scripts/r2_sync.py push --prefix processed
