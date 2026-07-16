@@ -66,12 +66,6 @@ tests/                       # pytest suite (29 tests)
 docs/
   METHODOLOGY.md             # Indicator definitions & methodology (+ changelog)
   DISCLAIMER.md              # Legal disclaimer & correction/right-of-reply process
-  MASTERPLAN_ELLADA_3.0_2026-07.md  # Consolidated masterplan (planning entry point, incl. checkpoint definitions)
-  SPRINTS_DETAILED.md        # Week-by-week sprint breakdown
-  UI_UX_SPEC_FINAL.md        # Per-page UI/UX spec & design decisions
-  NEO4J_INTEGRATION_FINAL.md # Graph analytics strategy (Φάση 2, offline)
-  RESEARCH_RESULTS.md        # ΚΗΜΔΗΣ API research & findings
-  MEMORY.md                  # Per-session project log & current state
 ```
 
 ## ⚙️ Technical
@@ -86,10 +80,8 @@ docs/
 See `docs/` folder for:
 - **METHODOLOGY.md** — risk indicator definitions (versioned changelog)
 - **DISCLAIMER.md** — legal notice, correction process & right of reply
-- **MASTERPLAN_ELLADA_3.0_2026-07.md** — consolidated masterplan & checkpoint definitions (start here)
-- **SPRINTS_DETAILED.md** — week-by-week sprint breakdown
-- **UI_UX_SPEC_FINAL.md** — site structure & UI/UX decisions
-- **MEMORY.md** — per-session project log (current state)
+
+Internal planning/working docs (roadmap, sprint log, research notes) are kept out of the public repo.
 
 ## 🆘 Get help
 
@@ -115,7 +107,7 @@ Solo-maintained (see [LICENSE](LICENSE) for terms). Contributions are welcome vi
 
 ---
 
-**Status**: Phase 1 — Sprint C complete (2026-07-09). Full backfill re-run, pipeline re-run (12.827 unique VATs, 6.191 entity profiles), first live deploy, and CI wired up. **Live site**: https://ellada30.pages.dev. See [docs/MEMORY.md](docs/MEMORY.md) for the detailed session log.
+**Status**: Phase 1 — Sprint C complete (2026-07-09). Full backfill re-run, pipeline re-run (12.827 unique VATs, 6.191 entity profiles), first live deploy, and CI wired up. **Live site**: https://ellada30.pages.dev.
 
 ### Deploying
 
