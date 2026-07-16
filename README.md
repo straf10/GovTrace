@@ -1,6 +1,14 @@
 # Ellada 3.0 — Διαφάνεια Δημοσίων Συμβάσεων
 
+[![Deploy](https://github.com/straf10/Ellada_3.0/actions/workflows/deploy.yml/badge.svg)](https://github.com/straf10/Ellada_3.0/actions/workflows/deploy.yml)
+[![Nightly pipeline](https://github.com/straf10/Ellada_3.0/actions/workflows/nightly.yml/badge.svg)](https://github.com/straf10/Ellada_3.0/actions/workflows/nightly.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Analysis and visualization of Greek public procurement data (ΚΗΜΔΗΣ) to identify procurement anomalies and risk indicators.
+
+Live site: **https://ellada30.pages.dev**
+
+> ⚠️ **Read before using or citing this data:** every indicator here is a statistical measure of procurement *process* characteristics (e.g. % direct awards, contractor concentration) — **none of them is a finding, accusation, or proof of illegality**. Direct awards and other procedures shown are themselves lawful under Greek law (ν.4412/2016). A high indicator means "worth investigating further," often with a fully legitimate explanation. Only courts and the competent audit authorities (Ελεγκτικό Συνέδριο, ΕΑΔ, ΕΑΔΗΣΥ) can make legal findings. Full statement, sourcing, and correction/right-of-reply process: [docs/DISCLAIMER.md](docs/DISCLAIMER.md).
 
 ## 📊 What's included
 
@@ -82,6 +90,21 @@ See `docs/` folder for:
 - **SPRINTS_DETAILED.md** — week-by-week sprint breakdown
 - **UI_UX_SPEC_FINAL.md** — site structure & UI/UX decisions
 - **MEMORY.md** — per-session project log (current state)
+
+## 🆘 Get help
+
+- **Bugs & feature requests**: open a [GitHub Issue](https://github.com/straf10/Ellada_3.0/issues)
+- **Corrections / right-of-reply on published data**: use the `/diorthoseis/` form on the live site (`site/functions/api/submit-correction.js`)
+- **Methodology questions**: see [docs/METHODOLOGY.md](docs/METHODOLOGY.md) (indicator definitions + changelog)
+- **Legal/data-quality caveats**: see [docs/DISCLAIMER.md](docs/DISCLAIMER.md)
+
+## 🤝 Maintainers & contributing
+
+Solo-maintained (see [LICENSE](LICENSE) for terms). Contributions are welcome via pull request:
+
+1. Fork the repo, create a branch, run the test suite (`pytest`) before opening a PR
+2. Keep changes to a formula/indicator in sync with a [docs/METHODOLOGY.md](docs/METHODOLOGY.md) changelog entry
+3. For anything touching legal/neutrality language (risk indicators, disclaimers), flag it explicitly in the PR description
 
 ## 🔗 Data source
 
