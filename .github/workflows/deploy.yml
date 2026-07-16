@@ -9,7 +9,7 @@ on:
 # παλιό zip ΠΑΝΩ από φρέσκο nightly deploy (stale-build κλάση σφάλματος,
 # sessions 19/23).
 concurrency:
-  group: deploy-ellada30
+  group: deploy-govtrace
   cancel-in-progress: false
 
 jobs:
@@ -51,4 +51,4 @@ jobs:
           # `wrangler pages deploy` looks for a `functions/` dir relative to
           # the cwd it runs in, not relative to the deployed dir -- run from
           # site/ so it finds site/functions/ (functions/ once cwd is site/).
-          command: pages deploy dist --project-name=ellada30 --branch=master
+          command: pages deploy dist --project-name=govtrace --branch=master

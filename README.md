@@ -6,7 +6,7 @@
 
 Analysis and visualization of Greek public procurement data (ΚΗΜΔΗΣ) to identify procurement anomalies and risk indicators.
 
-Live site: **https://ellada30.pages.dev**
+Live site: **https://govtrace.pages.dev**
 
 > ⚠️ **Read before using or citing this data:** every indicator here is a statistical measure of procurement *process* characteristics (e.g. % direct awards, contractor concentration) — **none of them is a finding, accusation, or proof of illegality**. Direct awards and other procedures shown are themselves lawful under Greek law (ν.4412/2016). A high indicator means "worth investigating further," often with a fully legitimate explanation. Only courts and the competent audit authorities (Ελεγκτικό Συνέδριο, ΕΑΔ, ΕΑΔΗΣΥ) can make legal findings. Full statement, sourcing, and correction/right-of-reply process: [docs/DISCLAIMER.md](docs/DISCLAIMER.md).
 
@@ -107,11 +107,11 @@ Solo-maintained (see [LICENSE](LICENSE) for terms). Contributions are welcome vi
 
 ---
 
-**Status**: Phase 1 — Sprint C complete (2026-07-09). Full backfill re-run, pipeline re-run (12.827 unique VATs, 6.191 entity profiles), first live deploy, and CI wired up. **Live site**: https://ellada30.pages.dev.
+**Status**: Phase 1 — Sprint C complete (2026-07-09). Full backfill re-run, pipeline re-run (12.827 unique VATs, 6.191 entity profiles), first live deploy, and CI wired up. **Live site**: https://govtrace.pages.dev.
 
 ### Deploying
 
-Static site, hosted on Cloudflare Pages (free tier), project `ellada30`. Site data (`site/src/data/`, `site/public/data/`) is gitignored — CI cannot rebuild it from a bare checkout, so the deploy flow is:
+Static site, hosted on Cloudflare Pages (free tier), project `govtrace`. Site data (`site/src/data/`, `site/public/data/`) is gitignored — CI cannot rebuild it from a bare checkout, so the deploy flow is:
 
 ```bash
 cd site && npm run build                                    # 1. build site/dist locally
@@ -127,8 +127,8 @@ gh workflow run deploy.yml                                   # 4. trigger the Cl
 
 **`/diorthoseis/` correction form (D11) — one-time Cloudflare Pages project setup, not automated by CI:**
 1. Create a [Resend](https://resend.com) account **using `ellada30@proton.me` as the account email** (sandbox mode without a verified domain can only deliver to the account's own address — that's exactly our recipient, so no custom domain is needed yet). Generate an API key.
-2. Create a Cloudflare KV namespace (e.g. `wrangler kv namespace create RATE_LIMIT_KV`) and bind it to the `ellada30` Pages project as `RATE_LIMIT_KV` (Pages dashboard → Settings → Functions → KV namespace bindings, both Production and Preview).
-3. Add `RESEND_API_KEY` as a Pages **secret** on the `ellada30` project (dashboard → Settings → Environment variables, or `wrangler pages secret put RESEND_API_KEY --project-name=ellada30`). Do not put it in `.env` or any committed file.
+2. Create a Cloudflare KV namespace (e.g. `wrangler kv namespace create RATE_LIMIT_KV`) and bind it to the `govtrace` Pages project as `RATE_LIMIT_KV` (Pages dashboard → Settings → Functions → KV namespace bindings, both Production and Preview).
+3. Add `RESEND_API_KEY` as a Pages **secret** on the `govtrace` project (dashboard → Settings → Environment variables, or `wrangler pages secret put RESEND_API_KEY --project-name=govtrace`). Do not put it in `.env` or any committed file.
 4. Once a custom domain exists (S4), verify it in Resend and switch `from:` in `site/functions/api/submit-correction.js` off `onboarding@resend.dev` to remove the sandbox recipient restriction entirely.
 
 **Latest changes**: `4759863` Cloudflare Pages deploy workflow + CI · `12e0088` audit-fix follow-up · `faf592d` security/bug fixes (XSS escaping, pagination completeness, unified VAT resolver, test suite) · `c9ae60b` Sprint B — entity profiles + VAT re-key.
