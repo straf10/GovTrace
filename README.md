@@ -24,7 +24,7 @@ Live site: **https://ellada30.pages.dev**
 python -m venv .venv
 .venv\Scripts\activate  # Windows
 source .venv/bin/activate  # macOS/Linux
-pip install -r requirements.txt
+pip install -r requirements/base.txt
 ```
 
 ### Run the dashboard locally

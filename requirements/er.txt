@@ -1,7 +1,7 @@
-# E7 (Sprint E) entity-resolution POC μόνο -- ΟΧΙ μέρος του production requirements.lock
+# E7 (Sprint E) entity-resolution POC μόνο -- ΟΧΙ μέρος του production requirements/lock.txt
 # (το CI/nightly δεν το χρειάζεται). Compatibility gate περάστηκε καθαρά στο
 # κύριο venv (Python 3.14 + pandas 3) -- βλ. SPRINT_E_PLAN.md §E7 βήμα 1.
-# Εγκατάσταση: pip install -r requirements-er.txt
+# Εγκατάσταση: pip install -r requirements/er.txt
 altair==6.2.2
 attrs==26.1.0
 duckdb==1.5.4

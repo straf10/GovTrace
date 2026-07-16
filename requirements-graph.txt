@@ -1,5 +1,0 @@
-# Φάση 2.1 (P2-05..P2-11) — offline Neo4j graph analysis μόνο.
-# ΟΧΙ μέρος του production requirements.lock (το CI/nightly δεν αγγίζει
-# ποτέ Neo4j -- offline/local/disposable, βλ. docs/PHASE_2.md).
-# Εγκατάσταση: pip install -r requirements-graph.txt
-neo4j==5.28.4

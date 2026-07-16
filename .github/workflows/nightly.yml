@@ -52,15 +52,15 @@ jobs:
         with:
           # Μόνο minor pin (#19, CHECK 2026-07-11): patch-level pin θα κοκκίνιζε
           # το nightly όταν τα runner images αποσύρουν το συγκεκριμένο build.
-          python-version: "3.14" # ίδιο minor με το τοπικό venv (βλ. requirements.lock header)
+          python-version: "3.14" # ίδιο minor με το τοπικό venv (βλ. requirements/lock.txt header)
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22.12.0"
 
-      - name: pip install (requirements.lock -- αναπαραγώγιμο build, S2)
-        run: pip install -r requirements.lock
+      - name: pip install (requirements/lock.txt -- αναπαραγώγιμο build, S2)
+        run: pip install -r requirements/lock.txt
 
       - name: R2 pull (data/raw, data/processed)
         run: python scripts/r2_sync.py pull --prefix raw --prefix processed

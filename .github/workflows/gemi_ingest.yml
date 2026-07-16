@@ -45,8 +45,8 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: pip install (requirements.lock)
-        run: pip install -r requirements.lock
+      - name: pip install (requirements/lock.txt)
+        run: pip install -r requirements/lock.txt
 
       - name: R2 pull (processed -- contractor_aliases.csv + ήδη-αντλημένο companies.parquet)
         run: python scripts/r2_sync.py pull --prefix processed

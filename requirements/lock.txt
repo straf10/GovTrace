@@ -1,6 +1,6 @@
 # Παράγεται με: .venv/Scripts/python.exe -m pip freeze
-# Python 3.14.6. Εγκατάσταση: pip install -r requirements.lock
-# Ενημέρωση requirements.txt (lower bounds) πρώτα, μετά re-freeze εδώ.
+# Python 3.14.6. Εγκατάσταση: pip install -r requirements/lock.txt
+# Ενημέρωση requirements/base.txt (lower bounds) πρώτα, μετά re-freeze εδώ.
 anyio==4.14.1
 boto3==1.43.46
 botocore==1.43.46
