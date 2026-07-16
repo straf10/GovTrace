@@ -1,7 +1,7 @@
 # GovTrace.gr — Διαφάνεια Δημοσίων Συμβάσεων
 
-[![Deploy](https://github.com/straf10/Ellada_3.0/actions/workflows/deploy.yml/badge.svg)](https://github.com/straf10/Ellada_3.0/actions/workflows/deploy.yml)
-[![Nightly pipeline](https://github.com/straf10/Ellada_3.0/actions/workflows/nightly.yml/badge.svg)](https://github.com/straf10/Ellada_3.0/actions/workflows/nightly.yml)
+[![Deploy](https://github.com/straf10/GovTrace/actions/workflows/deploy.yml/badge.svg)](https://github.com/straf10/GovTrace/actions/workflows/deploy.yml)
+[![Nightly pipeline](https://github.com/straf10/GovTrace/actions/workflows/nightly.yml/badge.svg)](https://github.com/straf10/GovTrace/actions/workflows/nightly.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Analysis and visualization of Greek public procurement data (ΚΗΜΔΗΣ) to identify procurement anomalies and risk indicators.
