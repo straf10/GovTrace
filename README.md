@@ -1,4 +1,4 @@
-# Ellada 3.0 — Διαφάνεια Δημοσίων Συμβάσεων
+# GovTrace.gr — Διαφάνεια Δημοσίων Συμβάσεων
 
 [![Deploy](https://github.com/straf10/Ellada_3.0/actions/workflows/deploy.yml/badge.svg)](https://github.com/straf10/Ellada_3.0/actions/workflows/deploy.yml)
 [![Nightly pipeline](https://github.com/straf10/Ellada_3.0/actions/workflows/nightly.yml/badge.svg)](https://github.com/straf10/Ellada_3.0/actions/workflows/nightly.yml)
