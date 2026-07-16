@@ -53,7 +53,12 @@ jobs:
 
       - name: GEMI ingest batch
         # ~500 ΑΦΜ * 7.5s/ΑΦΜ ≈ 62 λεπτά, εντός του 75-λεπτου job timeout.
-        run: python scripts/gemi_ingest.py --limit "${{ github.event.inputs.limit || '500' }}"
+        # Το input περνάει μέσω env var, ΟΧΙ με ${{ }} expansion μέσα στο run:
+        # (pre-public audit 2026-07-16, A3) -- το inline expansion γίνεται πριν
+        # το shell parsing, άρα ένα κακόβουλο input θα εκτελούνταν ως shell code.
+        env:
+          INGEST_LIMIT: ${{ github.event.inputs.limit || '500' }}
+        run: python scripts/gemi_ingest.py --limit "$INGEST_LIMIT"
 
       - name: R2 push (companies.parquet checkpoint)
         run: python scripts/r2_sync.py push --prefix processed

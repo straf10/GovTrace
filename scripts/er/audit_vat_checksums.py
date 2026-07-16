@@ -29,7 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from kimdis_data import is_valid_vat_checksum  # noqa: E402
 
 MATCHES_PATH = Path("data/processed/er/entity_resolution_matches.csv")
-OUT_PATH = Path("docs/research/vat_checksum_audit_2026-07.csv")
+# Εκτός git (2026-07-16 audit): η λίστα περιέχει ονόματα+ΑΦΜ και φυσικών
+# προσώπων -- μένει στο data/processed/ (gitignored, συγχρονίζεται στο R2).
+OUT_PATH = Path("data/processed/er/vat_checksum_audit_2026-07.csv")
 
 
 def checksum_ok(vat: str | float) -> bool | None:

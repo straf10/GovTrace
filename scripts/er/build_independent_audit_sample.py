@@ -28,7 +28,9 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 MATCHES_PATH = Path("data/processed/er/entity_resolution_matches.csv")
 EXISTING_AUDIT_PATH = Path("data/processed/er/er_audit_sample.csv")
-OUTPUT_PATH = Path("docs/research/er_audit_independent_2026-07.csv")
+# Εκτός git (2026-07-16 audit): το δείγμα περιέχει ονόματα+ΑΦΜ και φυσικών
+# προσώπων -- μένει στο data/processed/ (gitignored, συγχρονίζεται στο R2).
+OUTPUT_PATH = Path("data/processed/er/er_audit_independent_2026-07.csv")
 SAMPLE_SIZE = 30
 SEED = 20260713  # διαφορετικό seed από το build_audit_sample.py (42) -- σκόπιμα ανεξάρτητο δείγμα
 
