@@ -87,7 +87,7 @@ Internal planning/working docs (roadmap, sprint log, research notes) are kept ou
 
 ## 🆘 Get help
 
-- **Bugs & feature requests**: open a [GitHub Issue](https://github.com/straf10/Ellada_3.0/issues)
+- **Bugs & feature requests**: open a [GitHub Issue](https://github.com/straf10/GovTrace/issues)
 - **Corrections / right-of-reply on published data**: use the `/diorthoseis/` form on the live site (`site/functions/api/submit-correction.js`)
 - **Methodology questions**: see [docs/METHODOLOGY.md](docs/METHODOLOGY.md) (indicator definitions + changelog)
 - **Legal/data-quality caveats**: see [docs/DISCLAIMER.md](docs/DISCLAIMER.md)
