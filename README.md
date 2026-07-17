@@ -9,6 +9,8 @@ Analysis and visualization of Greek public procurement data (ΚΗΜΔΗΣ) to id
 Live site: **https://govtrace.pages.dev**
 
 > ⚠️ **Read before using or citing this data:** every indicator here is a statistical measure of procurement *process* characteristics (e.g. % direct awards, contractor concentration) — **none of them is a finding, accusation, or proof of illegality**. Direct awards and other procedures shown are themselves lawful under Greek law (ν.4412/2016). A high indicator means "worth investigating further," often with a fully legitimate explanation. Only courts and the competent audit authorities (Ελεγκτικό Συνέδριο, ΕΑΔ, ΕΑΔΗΣΥ) can make legal findings. Full statement, sourcing, and correction/right-of-reply process: [docs/DISCLAIMER.md](docs/DISCLAIMER.md).
+>
+> 📅 **Data coverage starts in 2020**, not earlier — a practical limit driven by infrastructure/backfill cost, not a focus on any particular government or period. Extending further back is on the roadmap as resources allow.
 
 ## 📊 What's included
 
