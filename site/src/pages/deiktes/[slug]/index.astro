@@ -79,8 +79,16 @@ const statusLabel = {
     overflow-x: auto;
   }
   .formula-block code {
-    font-family: "SFMono-Regular", Consolas, Menlo, monospace;
-    font-size: 1.05rem;
+    font-family: "Latin Modern Math", "STIX Two Math", "Cambria Math", "SFMono-Regular", Consolas, Menlo, monospace;
+    font-size: 1.15rem;
     white-space: pre-wrap;
+  }
+</style>
+
+<style is:global>
+  @font-face {
+    font-family: "Latin Modern Math";
+    src: url("/fonts/latinmodern-math.woff2") format("woff2");
+    font-display: swap;
   }
 </style>
